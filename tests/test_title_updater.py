@@ -111,7 +111,7 @@ class HookTests(unittest.TestCase):
         self.assertEqual(self.state()["last_rename_round"], 2)
 
     def test_no_cosmetic_change_or_fourth_turn_check(self):
-        keep = YES | {"topic_changed": False}
+        keep = YES | {"topic_changed": False, "old_title_inaccurate": False}
         for n in range(1, 9):
             self.run_hook(n, keep | {"rename": False} if n == 1 else keep)
         self.assertEqual([x[0] for x in self.reviews], [1, 2, 6, 8])
@@ -167,6 +167,55 @@ class HookTests(unittest.TestCase):
         self.assertIn("初次命名不要求话题变化或原标题失准", initial)
         self.assertNotIn("只有主要话题/具体对象", initial)
         self.assertIn("只有主要话题/具体对象", regular)
+
+    def test_second_turn_corrects_link_title_without_topic_change(self):
+        self.backend.value = "codex://threads/example-thread 请接着处理一…"
+        self.run_hook(1, YES | {"rename": False})
+        def review(old, context, config):
+            self.assertFalse(config["initial_naming"])
+            self.assertTrue(config["initial_correction"])
+            return YES | {"topic_changed": False, "title": "TileGame 按钮修复说明"}
+        payload = self.payload(2)
+        ar.process(payload, self.cfg, self.backend, review)
+        ar.process(payload, self.cfg, self.backend, lambda *x: self.fail("duplicate correction"))
+        self.assertEqual(self.backend.writes, [("thread-a", "TileGame 按钮修复说明")])
+        self.assertEqual(self.state()["last_rename_round"], 2)
+
+    def test_initial_correction_does_not_reword_accurate_title(self):
+        self.run_hook(2, YES | {"topic_changed": False, "old_title_inaccurate": False})
+        self.assertEqual(self.backend.writes, [])
+        self.assertNotIn("last_rename_round", self.state())
+
+    def test_initial_correction_remains_available_after_missed_check(self):
+        self.run_hook(2, YES | {"rename": False})
+        self.run_hook(6, YES | {"topic_changed": False})
+        self.assertEqual(self.state()["last_rename_round"], 6)
+
+    def test_after_initial_correction_same_topic_changes_stay_blocked(self):
+        self.run_hook(2, YES | {"topic_changed": False})
+        self.run_hook(6, YES | {"topic_changed": False, "title": "ToyDB 连接故障排查"})
+        self.assertEqual(len(self.backend.writes), 1)
+        self.assertEqual(self.state()["last_rename_round"], 2)
+
+    def test_initial_correction_respects_cooldown(self):
+        self.run_hook(6, YES | {"topic_changed": False})
+        self.run_hook(8, YES | {"title": "TileEngine 编译排错"})
+        self.assertEqual([r[0] for r in self.reviews], [6])
+        self.assertIn("cooldown", [e["event"] for e in self.events()])
+
+    def test_initial_correction_cannot_leak_from_settings(self):
+        self.run_hook(1)
+        def review(old, context, config):
+            self.assertFalse(config["initial_correction"])
+            return YES | {"topic_changed": False, "title": "ToyDB 连接故障排查"}
+        ar.process(self.payload(6), self.cfg | {"initial_correction": True}, self.backend, review)
+        self.assertEqual(len(self.backend.writes), 1)
+
+    def test_initial_correction_prompt_requires_inaccurate_title(self):
+        prompt = ar.review_prompt("codex://threads/example", [], initial_correction=True)
+        self.assertIn("不要求话题变化", prompt)
+        self.assertIn("原标题准确时保持", prompt)
+        self.assertIn("链接本身不是改名理由", prompt)
 
     def test_unchanged_check_does_not_restart_cooldown(self):
         self.run_hook(2)
@@ -339,6 +388,14 @@ class HookTests(unittest.TestCase):
         for override in [{"confidence": .5}, {"rename": "true"}, {"rename": False},
                          {"title": "English only"}, {"title": "中文\n标题"}, {"title": self.backend.value}]:
             self.assertIsNone(ar.valid_proposal(same_topic | override, self.backend.value, cfg), override)
+
+    def test_initial_correction_keeps_accuracy_and_confidence_validation(self):
+        cfg = self.cfg | {"initial_correction": True}
+        result = YES | {"topic_changed": False}
+        self.assertEqual(ar.valid_proposal(result, self.backend.value, cfg), YES["title"])
+        for override in [{"old_title_inaccurate": False}, {"confidence": .5}, {"rename": False},
+                         {"title": self.backend.value}, {"title": "English only"}, {"title": "中文\n标题"}]:
+            self.assertIsNone(ar.valid_proposal(result | override, self.backend.value, cfg), override)
 
     def test_dry_run_has_no_persistent_state_or_rename(self):
         with contextlib.redirect_stdout(io.StringIO()) as out:

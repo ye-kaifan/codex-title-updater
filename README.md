@@ -43,8 +43,8 @@ Title reviews use your configured Codex model provider, consume quota or incur A
 
 - **第一轮先命名**。 首轮结束后，根据实际需求和回答主动生成标题，不要求话题已变化。后续检查点为第 2、6、8、10…轮；每次成功改名都需冷却至少 4 轮。第一轮成功改名时，第 2 轮跳过，最早第 6 轮再检查。<br>
   **Name after the first turn**. Generate an initial title from the request and answer without requiring a topic change. Later checks are scheduled for turns 2, 6, 8, 10, …, subject to a 4-turn cooldown after every successful rename. A turn-1 rename skips turn 2; the next check is at turn 6.
-- **后续只在原标题失准时改**。 初次命名后，主要话题须有实质变化；简单追问、短暂插问和换一种措辞都不是改名理由。<br>
-  **Keep later renames selective**. After initial naming, the main topic must change substantially; follow-up questions, brief asides and stylistic rewording do not qualify.
+- **补正失准的初始标题**。 尚未成功自动命名时，后续检查可以修正以会话链接、无意义开场白等充当标题的情况，不要求先换题；原标题准确就保持。成功命名后，再次更新仍要求主要话题有实质变化且原标题已失准，简单追问和换措辞不触发改名。<br>
+  **Correct inaccurate initial titles**. Before the first successful automatic rename, later checks may replace a misleading initial title, such as a conversation link or meaningless opening fragment, without requiring a topic change. Accurate titles stay. After successful naming, further updates still require a substantial topic change and an inaccurate title; follow-ups and stylistic rewording do not qualify.
 - **每个对话单独记数**。 仅统计完成的真实用户主会话轮次，工具调用、子代理和自动续跑不计入；重启后继续，同一轮不重复处理。<br>
   **Track each chat separately**. Count completed human turns in the main conversation, excluding tool calls, subagents and automatic continuations. State survives restarts; duplicate events are ignored.
 - **可以固定标题**。 默认首次接管已有标题，此后检测到外部改名便暂停该对话的自动更新；首次遇到的手动标题无法自动识别，保护方法见下方技术说明。<br>
@@ -102,6 +102,9 @@ tail -n 20 ~/.codex/hooks/codex-title-updater/data/audit.jsonl
 
 `doctor` 中对应 Hook 应唯一、启用且 `trustStatus: trusted`。测试对话完成第 1 轮后，日志应出现带 `initial_naming: true` 的 `check`，随后为 `keep` 或 `renamed`。第一轮成功改名后，第 2 轮为 `cooldown`，第 6 轮再检查；第 4 轮不检查。成功更新后的冷却轮次记录为 `cooldown`。手动改标题后再完成一轮，应出现 `manual_lock`。<br>
 In `doctor`, the hook should appear once, enabled, with `trustStatus: trusted`. After turn 1 in a test conversation, expect `check` with `initial_naming: true`, followed by `keep` or `renamed`. A successful turn-1 rename logs `cooldown` at turn 2 and checks again at turn 6; no check at turn 4. A cooling-down turn logs `cooldown`. Manually editing a title, then completing another turn, should log `manual_lock`.
+
+如果首轮命名被跳过或旧版本保留了失准的原标题，后续检查会记录 `initial_correction: true`。这允许校正初始标题，但仍须确认原标题确实失准；成功更新后恢复通常的换题要求。<br>
+If first-turn naming was missed or an older version kept an inaccurate initial title, later checks log `initial_correction: true`. This permits correction only when the old title is inaccurate; normal topic-change requirements resume after a successful rename.
 
 ## 控制与配置 / Controls & settings
 

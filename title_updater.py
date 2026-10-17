@@ -320,12 +320,19 @@ def review_context(parsed, ids, current_message, config):
     return result
 
 
-def review_prompt(old_title: str, context: list, *, initial_naming=False) -> str:
+def review_prompt(old_title: str, context: list, *, initial_naming=False, initial_correction=False) -> str:
     if initial_naming:
         policy = """本次是第 1 轮完成后的初次命名：请根据首轮真实用户需求和已完成的回答，主动生成一个具体、简洁的中文标题。
 初次命名不要求话题变化或原标题失准；即使旧标题与当前话题相同，也可以完成初次命名。
 生成的标题与原标题不同时设 rename=true；若已经完全相同则保持，不为凑一次改名而换措辞。
 topic_changed 与 old_title_inaccurate 仍如实判断，可以均为 false，不得为了改名编造话题变化。
+"""
+    elif initial_correction:
+        policy = """本次是尚未成功自动命名的会话的初始标题校正，可能已错过第一轮命名。
+先判断原标题能否准确概括当前具体对象和核心任务。若原标题主要是一串会话链接、上下文标记或无意义的截断开场白，或明显没有表达实际核心任务，可以校正，不要求话题变化。
+链接本身不是改名理由：如果标题已经清楚表达实际任务，即使包含链接也应保持。
+只有原标题明显失准、证据充分时才设 rename=true 和 old_title_inaccurate=true。原标题准确时保持，不为缩短、翻译或换措辞而改名。
+topic_changed 仍如实判断；同一任务的继续实现、排错、测试和润色不算换题，也不妨碍校正失准的初始标题。
 """
     else:
         policy = """只有主要话题/具体对象或核心任务已发生实质变化，并且原标题已经误导或明显遗漏当前主要工作时，才允许 rename=true。
@@ -345,7 +352,8 @@ topic_changed 与 old_title_inaccurate 必须各自独立判断，confidence 为
 def judge(old_title: str, context: list, config: dict) -> dict:
     # Input is supplied as data, never shell-interpolated. This process has no hooks,
     # no persisted conversation, no apps/plugins/MCP, no web and a read-only sandbox.
-    prompt = review_prompt(old_title, context, initial_naming=config.get("initial_naming", False))
+    prompt = review_prompt(old_title, context, initial_naming=config.get("initial_naming", False),
+                           initial_correction=config.get("initial_correction", False))
     with tempfile.TemporaryDirectory(prefix="review-", dir=data_home()) as td:
         td = Path(td)
         (td / "schema.json").write_text(json.dumps(SCHEMA))
@@ -385,7 +393,12 @@ def judge(old_title: str, context: list, config: dict) -> dict:
 
 
 def valid_proposal(result, old, config):
-    required = ("rename",) if config.get("initial_naming") else ("rename", "topic_changed", "old_title_inaccurate")
+    if config.get("initial_naming"):
+        required = ("rename",)
+    elif config.get("initial_correction"):
+        required = ("rename", "old_title_inaccurate")
+    else:
+        required = ("rename", "topic_changed", "old_title_inaccurate")
     if not all(result.get(k) is True for k in required):
         return None
     confidence = result.get("confidence")
@@ -466,10 +479,14 @@ def process(payload: dict, config=None, backend=None, reviewer=None, dry_run=Fal
         if n - state.get("last_rename_round", -1000) < 4:
             audit("cooldown", thread_id=thread_id, round=n)
             return
-        # Only a genuine first human turn gets initial naming. Installing into an
-        # older chat never turns its next check into a forced initial rename.
-        review_config = config | {"initial_naming": n == 1}
-        audit("check", thread_id=thread_id, round=n, initial_naming=n == 1)
+        # Only turn 1 gets unconditional initial naming. Until the first successful
+        # automatic rename, later checks may correct an inaccurate initial title
+        # without inventing a topic change; accurate titles must still be kept.
+        initial_correction = n > 1 and state.get("last_rename_round") is None
+        review_config = config | {"initial_naming": n == 1,
+                                  "initial_correction": initial_correction}
+        audit("check", thread_id=thread_id, round=n, initial_naming=n == 1,
+              initial_correction=initial_correction)
         proposal = reviewer(title, review_context(parsed, ids, payload.get("last_assistant_message"), config), review_config)
         new_title = valid_proposal(proposal, title, review_config)
         if not new_title:

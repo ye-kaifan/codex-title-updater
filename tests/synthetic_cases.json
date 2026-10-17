@@ -75,5 +75,37 @@
       }
     ],
     "expect_rename": false
+  },
+  {
+    "case": "initial_link_title_same_topic",
+    "initial_correction": true,
+    "old_title": "codex://threads/example-origin 请你接着改进一…",
+    "context": [
+      {
+        "user": "codex://threads/example-origin\n请为虚构的 TileKit 拼图工具写一份面向初学者的中文使用说明。",
+        "assistant": "已写好安装、开始拼图和保存进度的使用说明。"
+      },
+      {
+        "user": "请在说明中再补充如何保存拼图进度。",
+        "assistant": "已在 TileKit 使用说明中补充保存进度的步骤。"
+      }
+    ],
+    "expect_rename": true
+  },
+  {
+    "case": "initial_accurate_title_with_link",
+    "initial_correction": true,
+    "old_title": "TileKit 使用说明 codex://threads/example-origin",
+    "context": [
+      {
+        "user": "请为虚构的 TileKit 拼图工具写一份使用说明。",
+        "assistant": "已写好安装和开始拼图的使用说明。"
+      },
+      {
+        "user": "补充保存拼图进度的步骤。",
+        "assistant": "已在 TileKit 使用说明中补充保存进度。"
+      }
+    ],
+    "expect_rename": false
   }
 ]
