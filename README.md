@@ -9,7 +9,12 @@ Codex already generates titles, but a title may capture a conversation link or v
 它通过 Codex 的 `Stop` Hook 在一轮结束时触发。首轮也先检查标题是否准确，不为换措辞而重新命名；尚未成功自动校正时，无需先发生话题变化，就可以补正失准的初始标题。<br>
 It runs through Codex's `Stop` hook at the end of a turn. Even the first check preserves accurate titles rather than rewording them. Until the first successful automatic correction, a misleading initial title can be fixed without a topic change.
 
-## 复制提示词，让 Codex 安装 / Install with a prompt
+## 选择安装或自行创建 / Install or build your own
+
+想直接使用，选**方式一**，省去重新设计、开发和调试的过程；想自己实现一套、探索不同规则，选**方式二**。两种提示词都可以直接复制给 Codex。<br>
+Choose **Option 1** to use this project and skip designing, developing, and debugging it again. Choose **Option 2** to build your own implementation and explore different rules. Both prompts are ready to paste into Codex.
+
+### 方式一：安装现成项目 / Option 1: Install this project
 
 适用于支持原生 Hooks 和 App Server 的已登录 Codex，需要 **Python 3.11+**。macOS 已验证；Linux 已通过单元测试，完整使用流程仍待验证；Windows 暂不支持。<br>
 Requires a signed-in Codex with native Hooks and App Server, plus **Python 3.11+**. Verified on macOS; Linux unit tests pass, but the full workflow remains unverified. Windows is not supported yet.
@@ -38,6 +43,48 @@ Guide me through any manual trust review, and explain how to disable and re-enab
 
 标题判断会调用你在 Codex 中配置的模型服务，消耗额度或产生 API 费用，也可能增加轮末等待时间。<br>
 Title reviews use your configured Codex model provider, consume quota or incur API charges, and may add a wait at the end of a turn.
+
+### 方式二：让 Codex 从头创建 / Option 2: Have Codex build it from scratch
+
+下面给出创建一套独立 Hook 的需求；检查频率、标题语言和改名条件都可以先改成自己的偏好：<br>
+Use the following requirements to create an independent hook. Adjust the review schedule, title language, and rename conditions to suit your preferences:
+
+```text
+请从头创建一个标题检查和更新 Hook，补充 Codex 自带的自动命名，方便查找历史会话。
+
+规则：
+- 第 1 轮对话完成后，结合实际需求和回答检查已有标题；准确就保留，明显失准才纠正，不要求话题已变化。
+- 如果错过首轮且尚未成功自动校正过标题，后续检查仍允许纠正失准的初始标题。
+- 第 2 轮检查；从第 6 轮起，每 2 轮检查一次。每次成功改名后，至少间隔 4 轮再检查。因此首轮改名成功时跳过第 2 轮，下次在第 6 轮检查。
+- 成功校正初始标题后，只有主要话题发生变化、原标题已不准确时才再次修改，不为换措辞而改名。
+- 标题使用简洁中文，突出具体对象和核心任务，保留必要的项目名与技术词。
+- 只统计真实用户主会话轮次，工具调用、子代理和自动续跑不计入；各会话独立计数，重启后保留状态。
+- 尊重用户手动设置的标题；如果接口无法区分已有标题是手写还是自动生成，请说明处理方案。避免重复触发和循环改名。
+
+先检查当前 Codex 实际支持的 Hook 和改名接口，再完成实现、安装与验证。保留已有配置和其他 Hook。
+用测试对话验证准确标题保留、失准标题纠正，以及后续换题更新。
+需要我手动审核信任时，请告诉我具体操作；完成后告诉我如何停用和恢复。
+```
+
+```text
+Build a title-review and update hook from scratch to supplement Codex's built-in naming and make past chats easier to find.
+
+Rules:
+- After the first completed turn, review the existing title against the actual request and answer. Keep accurate titles and correct clearly misleading ones; a topic change is not required.
+- If the first check was missed and no automatic correction has succeeded yet, later checks may still correct an inaccurate initial title.
+- Check at turn 2, then every two turns from turn 6 onward. After each successful rename, wait at least four turns before checking again. A turn-1 rename therefore skips turn 2 and checks again at turn 6.
+- After the initial title has been corrected, rename only when the main topic has substantially changed and the old title is inaccurate. Do not rename merely to rephrase it.
+- Use concise Chinese titles that identify the specific subject and core task, preserving relevant project names and technical terms.
+- Count only real human turns in the main conversation, excluding tool calls, subagents, and automatic continuations. Track each chat independently and preserve state across restarts.
+- Respect manually set titles. If the interface cannot distinguish existing manual titles from generated ones, explain how they will be handled. Prevent duplicate processing and recursive renaming.
+
+First check the hook and title-update interfaces actually supported by my Codex installation, then implement, install, and verify the hook. Preserve my existing configuration and other hooks.
+Use test conversations to verify that accurate titles stay, misleading titles are corrected, and later topic changes trigger appropriate updates.
+Guide me through any manual trust review, and explain how to disable and re-enable the hook.
+```
+
+以下功能、实测开销和操作说明针对本仓库的实现。<br>
+The behavior, measured costs, and controls below describe this repository's implementation.
 
 ## 标题什么时候会改 / When titles change
 
