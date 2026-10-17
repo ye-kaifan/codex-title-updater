@@ -139,15 +139,15 @@ def executable() -> str:
         if os.name == "nt" and path.suffix.lower() in (".cmd", ".bat", ".ps1"):
             # npm's shell shim cannot safely transport arbitrary -c TOML strings.
             # Find its packaged native binary instead of using shell=True.
+            arch = "aarch64" if platform.machine().lower() in ("arm64", "aarch64") else "x86_64"
             for base in (path.parent / "node_modules/@openai", path.parent):
-                for pattern in ("codex/vendor/*/codex/codex.exe",
-                                "codex-*/vendor/*/codex/codex.exe",
-                                "codex/node_modules/@openai/codex-*/vendor/*/codex/codex.exe"):
-                    arch = "aarch64" if platform.machine().lower() in ("arm64", "aarch64") else "x86_64"
-                    matches = sorted(p for p in base.glob(pattern) if
-                                     p.parts[-3] == arch + "-pc-windows-msvc" and p.is_file())
-                    if matches:
-                        return str(matches[0].resolve())
+                for package in ("codex", "codex-*", "codex/node_modules/@openai/codex-*"):
+                    # Current npm packages use bin/; older ones used codex/.
+                    for directory in ("bin", "codex"):
+                        pattern = f"{package}/vendor/{arch}-pc-windows-msvc/{directory}/codex.exe"
+                        matches = sorted(p for p in base.glob(pattern) if p.is_file())
+                        if matches:
+                            return str(matches[0].resolve())
             if explicit:
                 raise RuntimeError("此 Codex shell shim 附近没有原生 codex.exe；请将 CODEX_TITLE_UPDATER_CLI 指向原生可执行文件")
             continue

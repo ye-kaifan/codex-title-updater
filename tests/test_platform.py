@@ -112,21 +112,22 @@ class DiscoveryTests(unittest.TestCase):
     def test_npm_shim_resolves_native_exe_without_shell(self):
         import platform
         arch = "aarch64" if platform.machine().lower() in ("arm64", "aarch64") else "x86_64"
-        with tempfile.TemporaryDirectory() as td:
-            root = Path(td)
-            shim = root / "codex.cmd"
-            shim.write_text("do not execute this", encoding="utf-8")
-            binary = root / ("node_modules/@openai/codex-win32-test/vendor/" + arch + "-pc-windows-msvc/codex/codex.exe")
-            binary.parent.mkdir(parents=True)
-            binary.touch()
-            with patch.dict(os.environ, {"CODEX_TITLE_UPDATER_CLI": str(shim)}):
-                self.assertEqual(ar.executable(), str(binary.resolve()))
-            # Python 3.12+ can prefer npm's extensionless POSIX shim. Search the
-            # Windows shim explicitly rather than attempting to launch that file.
-            with patch.dict(os.environ, {"CODEX_TITLE_UPDATER_CLI": "", "CODEX_CLI_PATH": ""}), \
-                 patch.object(ar.shutil, "which", side_effect=lambda name: {
-                     "codex": str(root / "codex"), "codex.cmd": str(shim)}.get(name)):
-                self.assertEqual(ar.executable(), str(binary.resolve()))
+        for directory in ("bin", "codex"):
+            with self.subTest(layout=directory), tempfile.TemporaryDirectory() as td:
+                root = Path(td)
+                shim = root / "codex.cmd"
+                shim.write_text("do not execute this", encoding="utf-8")
+                binary = root / (f"node_modules/@openai/codex-win32-test/vendor/{arch}-pc-windows-msvc/{directory}/codex.exe")
+                binary.parent.mkdir(parents=True)
+                binary.touch()
+                with patch.dict(os.environ, {"CODEX_TITLE_UPDATER_CLI": str(shim)}):
+                    self.assertEqual(ar.executable(), str(binary.resolve()))
+                # Python 3.12+ can prefer npm's extensionless POSIX shim. Search
+                # the Windows shim explicitly rather than launching that file.
+                with patch.dict(os.environ, {"CODEX_TITLE_UPDATER_CLI": "", "CODEX_CLI_PATH": ""}), \
+                     patch.object(ar.shutil, "which", side_effect=lambda name: {
+                         "codex": str(root / "codex"), "codex.cmd": str(shim)}.get(name)):
+                    self.assertEqual(ar.executable(), str(binary.resolve()))
 
 
 class ReviewProcessTests(unittest.TestCase):
