@@ -72,7 +72,8 @@ class ManageCliTests(unittest.TestCase):
                        "transcript_path": str(home / "不存在的中文会话.jsonl")}
             call = subprocess.run(argv, input=json.dumps(payload, ensure_ascii=False), text=True,
                                   encoding="utf-8", env=env | handler["env"],
-                                  cwd=home, capture_output=True, check=True)
+                                  cwd=home, capture_output=True, check=True,
+                                  **({"creationflags": subprocess.CREATE_NO_WINDOW} if os.name == "nt" else {}))
             self.assertEqual(call.stdout.strip(), "{}")
             self.assertEqual(call.stderr, "")
             event = json.loads((target / "data/audit.jsonl").read_text(encoding="utf-8"))

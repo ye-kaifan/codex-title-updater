@@ -30,7 +30,11 @@ jobs:
         run: .\run_tests.ps1
       - name: Install the verified Codex core (no sign-in)
         if: matrix.python == '3.12'
-        run: npm install --global @openai/codex@0.163.0-alpha.10.2
+        run: |
+          npm install --global @openai/codex@0.163.0-alpha.10.2
+          npm prefix --global
+          npm list --global --parseable @openai/codex
+          python -c "import shutil; print({name: shutil.which(name) for name in ['codex', 'codex.exe', 'codex.cmd', 'codex.ps1']})"
       - name: Native App Server and installed doctor in an isolated home (no model calls)
         if: matrix.python == '3.12'
         run: python -X utf8 run_native_checks.py --work-dir work/native --report work/native-report.json
