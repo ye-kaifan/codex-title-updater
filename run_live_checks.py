@@ -30,8 +30,9 @@ def main():
     config = ar.settings()
     cases = json.loads((ar.ROOT / "tests/synthetic_cases.json").read_text())
     for case in ([] if args.api_only else cases):
-        result = ar.judge(case["old_title"], case["context"], config)
-        accepted = ar.valid_proposal(result, case["old_title"], config) is not None
+        review_config = config | {"initial_naming": case.get("initial_naming", False)}
+        result = ar.judge(case["old_title"], case["context"], review_config)
+        accepted = ar.valid_proposal(result, case["old_title"], review_config) is not None
         entry = {"case": case["case"], "result": result, "accepted": accepted,
                  "pass": accepted == case["expect_rename"]}
         report["checks"].append(entry)

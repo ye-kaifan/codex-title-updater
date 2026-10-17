@@ -82,28 +82,91 @@ class HookTests(unittest.TestCase):
         p = self.root / "data/audit.jsonl"
         return [json.loads(l) for l in p.read_text().splitlines()] if p.exists() else []
 
-    def test_schedule_exactly_2_6_8_10(self):
-        self.assertEqual([i for i in range(1, 15) if ar.scheduled(i)], [2, 6, 8, 10, 12, 14])
+    def test_schedule_exactly_1_2_6_8_10(self):
+        self.assertEqual([i for i in range(1, 15) if ar.scheduled(i)], [1, 2, 6, 8, 10, 12, 14])
 
-    def test_no_review_before_second_completed_turn(self):
+    def test_first_turn_names_without_requiring_topic_change(self):
+        def review(old, context, config):
+            self.assertTrue(config["initial_naming"])
+            self.assertEqual(len(context), 1)
+            return YES | {"topic_changed": False, "old_title_inaccurate": False}
+        ar.process(self.payload(1), self.cfg, self.backend, review)
+        self.assertEqual(len(self.backend.writes), 1)
+        self.assertEqual(self.state()["last_rename_round"], 1)
+        self.assertNotIn("initial_naming", self.cfg)
+
+    def test_first_turn_success_cools_down_second_turn(self):
         self.run_hook(1)
-        self.assertEqual(self.reviews, [])
         self.run_hook(2)
         self.assertEqual(len(self.backend.writes), 1)
+        self.assertEqual([x[0] for x in self.reviews], [1])
+        self.assertIn("cooldown", [e["event"] for e in self.events()])
+        self.run_hook(6, YES | {"title": "TileEngine 编译排错"})
+        self.assertEqual([x[0] for x in self.reviews], [1, 6])
+
+    def test_first_turn_unchanged_title_leaves_second_turn_eligible(self):
+        self.run_hook(1, YES | {"title": self.backend.value})
+        self.assertNotIn("last_rename_round", self.state())
+        self.run_hook(2)
         self.assertEqual(self.state()["last_rename_round"], 2)
 
     def test_no_cosmetic_change_or_fourth_turn_check(self):
         keep = YES | {"topic_changed": False}
         for n in range(1, 9):
-            self.run_hook(n, keep)
-        self.assertEqual([x[0] for x in self.reviews], [2, 6, 8])
+            self.run_hook(n, keep | {"rename": False} if n == 1 else keep)
+        self.assertEqual([x[0] for x in self.reviews], [1, 2, 6, 8])
         self.assertEqual(self.backend.writes, [])
 
     def test_successful_rename_four_round_cooldown(self):
         for n in range(1, 13):
             self.run_hook(n, YES | {"title": f"ToyDB 第{n}阶段集群排错"})
-        self.assertEqual([x[0] for x in self.reviews], [2, 6, 10])
+        self.assertEqual([x[0] for x in self.reviews], [1, 6, 10])
         self.assertEqual(len(self.backend.writes), 3)
+
+    def test_first_turn_failure_does_not_block_second_turn(self):
+        self.backend.fail = True
+        payload = self.payload(1)
+        with self.assertRaises(RuntimeError):
+            ar.process(payload, self.cfg, self.backend, lambda *x: YES)
+        self.assertNotIn("last_rename_round", self.state())
+        ar.process(payload, self.cfg, self.backend, lambda *x: self.fail("duplicate initial naming"))
+        self.backend.fail = False
+        self.run_hook(2)
+        self.assertEqual(self.state()["last_rename_round"], 2)
+
+    def test_first_turn_duplicate_after_reload_does_not_repeat(self):
+        payload = self.payload(1)
+        ar.process(payload, self.cfg, self.backend, lambda *x: YES)
+        importlib.reload(ar)
+        ar.process(payload, self.cfg, self.backend, lambda *x: self.fail("duplicate initial naming"))
+        self.assertEqual(len(self.backend.writes), 1)
+
+    def test_first_turn_protected_title_stays_locked(self):
+        self.cfg["adopt_existing"] = False
+        ar.process(self.payload(1), self.cfg, self.backend, lambda *x: self.fail("protected title"))
+        self.assertTrue(self.state()["locked"])
+        self.assertEqual(self.backend.writes, [])
+
+    def test_first_turn_uses_human_count_not_raw_turn_number(self):
+        def review(old, context, config):
+            self.assertTrue(config["initial_naming"])
+            return YES | {"topic_changed": False, "old_title_inaccurate": False}
+        ar.process(self.payload(2, triggers={1: "automation"}), self.cfg, self.backend, review)
+        self.assertEqual(self.state()["last_rename_round"], 1)
+
+    def test_initial_policy_cannot_leak_into_older_chat(self):
+        def review(old, context, config):
+            self.assertFalse(config["initial_naming"])
+            return YES | {"topic_changed": False, "old_title_inaccurate": False}
+        ar.process(self.payload(6), self.cfg | {"initial_naming": True}, self.backend, review)
+        self.assertEqual(self.backend.writes, [])
+
+    def test_initial_prompt_does_not_require_changed_topic(self):
+        initial = ar.review_prompt("原标题", [{"user": "测试需求"}], initial_naming=True)
+        regular = ar.review_prompt("原标题", [{"user": "测试需求"}])
+        self.assertIn("初次命名不要求话题变化或原标题失准", initial)
+        self.assertNotIn("只有主要话题/具体对象", initial)
+        self.assertIn("只有主要话题/具体对象", regular)
 
     def test_unchanged_check_does_not_restart_cooldown(self):
         self.run_hook(2)
@@ -268,6 +331,14 @@ class HookTests(unittest.TestCase):
                          {"title": "English only"}, {"title": "中文\n标题"}, {"title": " "},
                          {"title": "中" * 41}, {"title": self.backend.value}, {"confidence": float("nan")}]:
             self.assertIsNone(ar.valid_proposal(YES | override, self.backend.value, self.cfg), override)
+
+    def test_initial_naming_keeps_title_and_confidence_validation(self):
+        cfg = self.cfg | {"initial_naming": True}
+        same_topic = YES | {"topic_changed": False, "old_title_inaccurate": False}
+        self.assertEqual(ar.valid_proposal(same_topic, self.backend.value, cfg), YES["title"])
+        for override in [{"confidence": .5}, {"rename": "true"}, {"rename": False},
+                         {"title": "English only"}, {"title": "中文\n标题"}, {"title": self.backend.value}]:
+            self.assertIsNone(ar.valid_proposal(same_topic | override, self.backend.value, cfg), override)
 
     def test_dry_run_has_no_persistent_state_or_rename(self):
         with contextlib.redirect_stdout(io.StringIO()) as out:

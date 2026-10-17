@@ -1,10 +1,40 @@
 [
   {
+    "case": "first_turn_initial_title",
+    "initial_naming": true,
+    "old_title": "讨论按钮",
+    "context": [
+      {
+        "user": "请修复这个虚构拼图游戏的开始按钮在手机上点不动的问题。",
+        "assistant": "已找到触摸事件被遮罩拦截的原因，并修复开始按钮。"
+      }
+    ],
+    "expect_rename": true
+  },
+  {
+    "case": "first_turn_without_existing_title",
+    "initial_naming": true,
+    "old_title": "",
+    "context": [
+      {
+        "user": "为虚构的面包烘焙课程整理一份新手讲义。",
+        "assistant": "已整理配料、揉面、发酵和烘烤步骤。"
+      }
+    ],
+    "expect_rename": true
+  },
+  {
     "case": "same_topic",
     "old_title": "示例拼图游戏按钮修复",
     "context": [
-      {"user": "请修复这个虚构拼图游戏的开始按钮。", "assistant": "已修复开始按钮。"},
-      {"user": "继续测试这个按钮在手机屏幕上的表现。", "assistant": "已完成手机屏幕测试。"}
+      {
+        "user": "请修复这个虚构拼图游戏的开始按钮。",
+        "assistant": "已修复开始按钮。"
+      },
+      {
+        "user": "继续测试这个按钮在手机屏幕上的表现。",
+        "assistant": "已完成手机屏幕测试。"
+      }
     ],
     "expect_rename": false
   },
@@ -12,9 +42,18 @@
     "case": "topic_changed",
     "old_title": "示例拼图游戏按钮修复",
     "context": [
-      {"user": "虚构拼图游戏已经完成。接下来换一个独立任务，编写示例面包配方。", "assistant": "现在开始编写示例面包配方。"},
-      {"user": "列出示例面包的配料和烘烤步骤。", "assistant": "示例配料为面粉、水和酵母，步骤为混合、发酵和烘烤。"},
-      {"user": "继续改进示例配方，使操作步骤更清楚。", "assistant": "已改进示例面包配方的操作步骤。"}
+      {
+        "user": "虚构拼图游戏已经完成。接下来换一个独立任务，编写示例面包配方。",
+        "assistant": "现在开始编写示例面包配方。"
+      },
+      {
+        "user": "列出示例面包的配料和烘烤步骤。",
+        "assistant": "示例配料为面粉、水和酵母，步骤为混合、发酵和烘烤。"
+      },
+      {
+        "user": "继续改进示例配方，使操作步骤更清楚。",
+        "assistant": "已改进示例面包配方的操作步骤。"
+      }
     ],
     "expect_rename": true
   },
@@ -22,9 +61,18 @@
     "case": "brief_aside",
     "old_title": "示例拼图游戏按钮修复",
     "context": [
-      {"user": "继续修复虚构拼图游戏的开始按钮。", "assistant": "已修复按钮。"},
-      {"user": "顺便问一句，一加一等于几？", "assistant": "等于二。"},
-      {"user": "回到拼图按钮，完成最后的测试。", "assistant": "按钮测试通过。"}
+      {
+        "user": "继续修复虚构拼图游戏的开始按钮。",
+        "assistant": "已修复按钮。"
+      },
+      {
+        "user": "顺便问一句，一加一等于几？",
+        "assistant": "等于二。"
+      },
+      {
+        "user": "回到拼图按钮，完成最后的测试。",
+        "assistant": "按钮测试通过。"
+      }
     ],
     "expect_rename": false
   }
