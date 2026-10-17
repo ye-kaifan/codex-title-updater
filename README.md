@@ -1,5 +1,7 @@
 # Codex Title Updater
 
+[![Tests](https://github.com/ye-kaifan/codex-title-updater/actions/workflows/tests.yml/badge.svg)](https://github.com/ye-kaifan/codex-title-updater/actions/workflows/tests.yml)
+
 **让 Codex 的标题跟上对话，回头找聊天更方便**。<br>
 **Keep Codex titles relevant as your conversation evolves, so chats are easier to find**.
 
@@ -16,8 +18,8 @@ Choose **Option 1** to use this project and skip designing, developing, and debu
 
 ### 方式一：安装现成项目 / Option 1: Install this project
 
-适用于支持原生 Hooks 和 App Server 的已登录 Codex，需要 **Python 3.11+**。macOS 已验证；Linux 已通过单元测试，完整使用流程仍待验证；Windows 暂不支持。<br>
-Requires a signed-in Codex with native Hooks and App Server, plus **Python 3.11+**. Verified on macOS; Linux unit tests pass, but the full workflow remains unverified. Windows is not supported yet.
+适用于支持原生 Hooks 和 App Server 的已登录 Codex，需要 **Python 3.11+**。支持 macOS、Linux 和原生 Windows，Windows 无需 WSL。三平台均有离线测试、隔离安装流程和真实 App Server 接口检查；已登录环境中的完整 Hook 流程目前仅在 macOS 实测，Windows 和 Linux 仍需在实际客户端完成信任与对话验证。<br>
+Requires a signed-in Codex with native Hooks and App Server, plus **Python 3.11+**. Supports macOS, Linux and native Windows without WSL. All three have offline tests, isolated installation checks and native App Server API checks. The signed-in end-to-end hook workflow has been manually verified on macOS; Windows and Linux still need trust review and conversation testing in a real client.
 
 把下面这段话发给 Codex，无需自己逐条执行安装命令：<br>
 Paste this into Codex to have it handle the installation:
@@ -132,8 +134,10 @@ By default, the hook uses the default model in your Codex configuration and sets
 
 ## 手动安装与启用 / Manual install & enable
 
-无第三方 Python 依赖。macOS 完整流程验证使用的 Codex 内核为 `0.163.0-alpha.10.2`；自动化测试覆盖 macOS、Ubuntu 和 Python 3.11、3.14。<br>
-No third-party Python packages. The full macOS workflow was verified with Codex core `0.163.0-alpha.10.2`; automated tests cover macOS, Ubuntu, and Python 3.11/3.14.
+无第三方 Python 依赖。macOS 完整流程实测和三平台 CI 的原生接口检查均使用 Codex 内核 `0.163.0-alpha.10.2`；离线测试覆盖 macOS、Ubuntu、Windows 和 Python 3.11、3.12、3.14。可使用 Codex 内置的兼容 Python；不要求另装一套 Python。<br>
+No third-party Python packages. Both the manual macOS workflow and native API checks in three-platform CI use Codex core `0.163.0-alpha.10.2`. Offline tests cover macOS, Ubuntu, Windows and Python 3.11/3.12/3.14. A compatible Python bundled with Codex can be used; a separate installation is not required.
+
+macOS / Linux：
 
 ```bash
 git clone https://github.com/ye-kaifan/codex-title-updater.git
@@ -141,14 +145,27 @@ cd codex-title-updater
 bash run_manage.sh install
 ```
 
-已安装时，在仓库目录运行 `git pull --ff-only` 后重新执行 `bash run_manage.sh install` 即可更新。<br>
-To update, run `git pull --ff-only` in the checkout, then rerun `bash run_manage.sh install`.
+Windows（PowerShell，原生 Python 入口）/ Windows (PowerShell, native Python entry point):
 
-安装器合并 `~/.codex/hooks.json`，修改前备份；保留其他 Hook、`config.toml` 和 `notify`。重复安装不会重复注册，也不会覆盖设置和会话状态。设置了 `CODEX_HOME` 时使用该目录。<br>
-The installer merges and backs up `~/.codex/hooks.json`, preserving other hooks, `config.toml` and `notify`. Reinstalling preserves settings/state and does not duplicate registration. `CODEX_HOME` is respected.
+```powershell
+git clone https://github.com/ye-kaifan/codex-title-updater.git
+cd codex-title-updater
+python -X utf8 manage.py install
+python -X utf8 manage.py status
+python -X utf8 manage.py doctor
+```
 
-在与桌面端使用相同内核的 Codex CLI 中打开 `/hooks`，审核并信任命令包含 `codex-title-updater/title_updater.py hook` 的 `Stop` 项，然后重新打开对话。安装本身不会授予信任；步骤见 [官方 Hook 文档](https://learn.chatgpt.com/docs/hooks#review-and-trust-hooks)。<br>
-Open `/hooks` in the Codex CLI matching your desktop core. Review and trust the `Stop` entry containing `codex-title-updater/title_updater.py hook`, then reopen the conversation. Installation does not grant trust; see the [official hook guide](https://learn.chatgpt.com/docs/hooks#review-and-trust-hooks).
+也可用 `py -3.12 -X utf8 manage.py install`，或 `& 'C:\完整路径\python.exe' -X utf8 .\manage.py install` 指定 Codex 内置 Python。仓库另有 `run_manage.ps1` 和 `run_tests.ps1`；设置 `$env:CODEX_TITLE_UPDATER_PYTHON` 为完整 Python 路径后即可使用。若本机策略不允许运行 `.ps1` 文件，直接使用上面的 Python 命令。<br>
+Alternatively use `py -3.12 -X utf8 manage.py install`, or `& 'C:\full path\python.exe' -X utf8 .\manage.py install` for Codex's bundled Python. Optional `run_manage.ps1` and `run_tests.ps1` wrappers honor `$env:CODEX_TITLE_UPDATER_PYTHON` as a full Python path. If local policy blocks `.ps1` files, use the Python commands above.
+
+已安装时，在仓库目录运行 `git pull --ff-only`，再重新执行对应平台的 `install` 命令即可更新。启动命令变化后可能需要重新审核信任。<br>
+To update, run `git pull --ff-only` in the checkout and rerun your platform's `install` command. A changed launch command may require another trust review.
+
+安装器合并 `~/.codex/hooks.json`（Windows 默认为 `%USERPROFILE%\.codex\hooks.json`），修改前备份；保留其他 Hook、`config.toml` 和 `notify`。重复安装不会重复注册，也不会覆盖设置、停用状态和会话状态。设置了 `CODEX_HOME` 时使用该目录，也可向 `manage.py` 传入 `--codex-home PATH` 和 `--install-dir PATH`。注册项明确绑定所选 `CODEX_HOME`；安装目录中的管理入口会记住所属目录。<br>
+The installer merges and backs up `~/.codex/hooks.json` (`%USERPROFILE%\.codex\hooks.json` on Windows), preserving other hooks, `config.toml` and `notify`. Reinstalling preserves settings, disabled status and session state without duplicate registration. `CODEX_HOME` is respected; `manage.py` also accepts `--codex-home PATH` and `--install-dir PATH`. The hook registration binds the selected `CODEX_HOME`, and installed management entry points remember their installation location.
+
+在与桌面端使用相同内核的 Codex CLI 中打开 `/hooks`，审核并信任状态说明为“检查会话标题”的 `Stop` 项，然后重新打开对话。macOS/Linux 命令包含 `title_updater.py hook`；Windows 使用编码后的 PowerShell 启动命令，以保护中文、空格及 `%`、`!`、`&` 等路径字符，并按 UTF-8 传递 Hook 输入。完整注册命令保存在安装目录的 `registration.json` 中。安装本身不会授予信任；步骤见 [官方 Hook 文档](https://learn.chatgpt.com/docs/hooks#review-and-trust-hooks)。<br>
+Open `/hooks` in the Codex CLI matching your desktop core. Review and trust the `Stop` entry whose status message is “检查会话标题”, then reopen the conversation. macOS/Linux commands contain `title_updater.py hook`; Windows uses an encoded PowerShell launcher to protect Unicode, spaces and path characters such as `%`, `!` and `&`, forwarding hook input as UTF-8. The full registered command is saved in the installation's `registration.json`. Installation does not grant trust; see the [official hook guide](https://learn.chatgpt.com/docs/hooks#review-and-trust-hooks).
 
 若终端里的 Codex 比桌面内核旧，可使用桌面附带的 CLI，例如：<br>
 If the terminal CLI is older than your desktop core, use the bundled CLI, for example:
@@ -162,9 +179,29 @@ If the terminal CLI is older than your desktop core, use the bundled CLI, for ex
 ```bash
 bash run_tests.sh                          # 离线测试 / Offline tests
 bash run_manage.sh status                  # 安装设置 / Installed settings
-python3 ~/.codex/hooks/codex-title-updater/title_updater.py doctor
+bash run_manage.sh doctor                  # 原生接口与信任状态 / Native API & trust
 tail -n 20 ~/.codex/hooks/codex-title-updater/data/audit.jsonl
 ```
+
+```powershell
+python -X utf8 -m unittest discover -s tests -v  # Windows 离线测试 / Offline tests
+python -X utf8 manage.py status
+python -X utf8 manage.py doctor
+# CODEX_HOME 未设置时的默认日志位置 / Default log when CODEX_HOME is unset
+Get-Content "$env:USERPROFILE\.codex\hooks\codex-title-updater\data\audit.jsonl" -Tail 20 -Encoding UTF8
+```
+
+验证分为三层，避免把 CI 结果当成已登录环境中的完整验证：<br>
+Validation has three levels; CI results do not establish a signed-in end-to-end workflow:
+
+| 层次 / Level | 已覆盖范围 / Coverage | 是否调用模型 / Model calls |
+| --- | --- | --- |
+| 离线测试 / Offline tests | 三平台的规则回归、跨进程锁、RPC 分片/通知/超时、阻塞输入、进程树清理、中文及特殊字符路径、安装/更新/启停/卸载 / Three-platform policy regression, process locks, fragmented RPC/notifications/timeouts, blocked stdin, process-tree cleanup, Unicode/special paths, installation/update/controls/uninstall | 否 / No |
+| 原生接口检查 / Native API checks | 三平台真实 Codex 中的隔离安装、重复安装、`doctor`/`hooks/list`、虚构会话的创建与改名读回、配置保留 / Real Codex on all three platforms: isolated install/reinstall, `doctor`/`hooks/list`, synthetic thread creation/name-set/read, configuration preservation | 否 / No |
+| 已登录客户端 / Signed-in client | `/hooks` 人工信任后，实际完成对话并检查审计日志；macOS 已实测，Windows/Linux 待实际环境验证 / Trust in `/hooks`, complete real turns and inspect audit logs; manually verified on macOS, pending on Windows/Linux | 是 / Yes |
+
+CI 原生接口检查可在本机复现：`python -X utf8 run_native_checks.py --work-dir work/native --report work/native-report.json`。只使用临时 `CODEX_HOME` 和合成数据，不读取真实对话或登录文件，也不会自动授予信任。`run_live_checks.py` 是另一个会调用模型的合成样例检查工具，不属于离线 CI；它也不能替代客户端中的真实 Stop Hook 验证。<br>
+Reproduce CI's native checks with `python -X utf8 run_native_checks.py --work-dir work/native --report work/native-report.json`. They use a temporary `CODEX_HOME` and synthetic data without reading real conversations/login files or granting trust. The separate `run_live_checks.py` submits synthetic cases to a model and is excluded from offline CI; it also does not replace real Stop-hook validation in a client.
 
 `doctor` 中对应 Hook 应唯一、启用且 `trustStatus: trusted`。测试对话完成第 1 轮后，日志应出现带 `initial_naming: true` 的 `check`，随后为 `keep` 或 `renamed`。第一轮成功改名后，第 2 轮为 `cooldown`，第 6 轮再检查；第 4 轮不检查。成功更新后的冷却轮次记录为 `cooldown`。手动改标题后再完成一轮，应出现 `manual_lock`。<br>
 In `doctor`, the hook should appear once, enabled, with `trustStatus: trusted`. After turn 1 in a test conversation, expect `check` with `initial_naming: true`, followed by `keep` or `renamed`. A successful turn-1 rename logs `cooldown` at turn 2 and checks again at turn 6; no check at turn 4. A cooling-down turn logs `cooldown`. Manually editing a title, then completing another turn, should log `manual_lock`.
@@ -186,11 +223,22 @@ python3 ~/.codex/hooks/codex-title-updater/title_updater.py lock THREAD_ID
 python3 ~/.codex/hooks/codex-title-updater/title_updater.py unlock THREAD_ID
 ```
 
+Windows 使用 `python -X utf8 manage.py disable`、`enable`、`uninstall`。`inspect`、`lock`、`unlock` 使用安装后的 `title_updater.py`，例如：<br>
+On Windows use `python -X utf8 manage.py disable`, `enable` or `uninstall`. Run `inspect`, `lock` and `unlock` against the installed `title_updater.py`, for example:
+
+```powershell
+# 若设置了 CODEX_HOME，请替换为该目录 / Substitute CODEX_HOME when set
+python -X utf8 "$env:USERPROFILE\.codex\hooks\codex-title-updater\title_updater.py" lock THREAD_ID
+```
+
 设置文件为 `~/.codex/hooks/codex-title-updater/settings.json`：`model: null` 使用 Codex 默认配置的模型，检查时默认使用 `reasoning_effort: "low"`；`adopt_existing: false` 可保护首次遇到的已有标题。`unlock` 接管当前标题，但保留四轮间隔。需要固定标题时，先 `lock` 再修改。<br>
 Edit `~/.codex/hooks/codex-title-updater/settings.json`: `model: null` uses the default model in your Codex configuration, with `reasoning_effort: "low"` for reviews; `adopt_existing: false` protects titles already present on first observation. `unlock` adopts the current title without resetting the cooldown. For a fixed title, `lock` before editing.
 
-`CODEX_TITLE_UPDATER_PYTHON` 可指定脚本使用的 Python；`CODEX_TITLE_UPDATER_CLI` 可指定 Codex 可执行文件；`CODEX_TITLE_UPDATER_HOME` 可指定状态目录。后两项需在运行 Hook 的 Codex 进程环境中设置。<br>
-Use `CODEX_TITLE_UPDATER_PYTHON` to choose Python, `CODEX_TITLE_UPDATER_CLI` to choose the Codex executable, and `CODEX_TITLE_UPDATER_HOME` to relocate state. The latter two must be set in the Codex process running the hook.
+`CODEX_TITLE_UPDATER_PYTHON` 可为 `.sh`/`.ps1` 入口指定完整 Python 路径；直接运行 `manage.py` 时使用当前 Python，安装器将其写入注册命令。`CODEX_TITLE_UPDATER_CLI` 可指定完整 Codex 可执行文件路径，不含外层引号或额外参数；`CODEX_TITLE_UPDATER_HOME` 可指定状态目录。后两项需在运行 Hook 的 Codex 进程环境中设置。<br>
+`CODEX_TITLE_UPDATER_PYTHON` selects a full Python path for `.sh`/`.ps1` wrappers; direct `manage.py` invocation registers the Python currently running it. `CODEX_TITLE_UPDATER_CLI` selects a full Codex executable path without surrounding quotes or extra arguments. `CODEX_TITLE_UPDATER_HOME` relocates state. The latter two must be set in the Codex process running the hook.
+
+自动发现优先使用显式指定的 CLI，其次为 macOS 桌面内核和 `PATH`。Windows 的 npm `codex.cmd`/`codex.ps1` 会解析到相邻安装包中当前架构的原生 `codex.exe`，不通过 shell 转发模型参数；无法解析时请明确指定原生 `codex.exe`。Linux 需让 `codex` 在 `PATH` 中，或设置上述变量。显式路径无效时会报错，不会悄悄换用另一版本。<br>
+Discovery prioritizes explicit CLI overrides, then macOS desktop cores and `PATH`. On Windows, npm `codex.cmd`/`codex.ps1` shims resolve to the adjacent package's native `codex.exe` for the current architecture, avoiding shell forwarding of model arguments. If resolution fails, specify the native `codex.exe` explicitly. On Linux, put `codex` on `PATH` or set the override. Invalid explicit paths fail instead of silently selecting another version.
 
 ## 数据与限制 / Data & limitations
 

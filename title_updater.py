@@ -5,20 +5,22 @@ from __future__ import annotations
 import argparse
 import contextlib
 import datetime as dt
-import fcntl
 import hashlib
 import json
 import os
+import platform
 from pathlib import Path
 import re
-import selectors
+import queue
 import shutil
-import signal
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 import tomllib
+
+from platform_support import communicate, configure_stdio, file_lock, spawn, stop_process
 
 ROOT = Path(__file__).resolve().parent
 DEFAULTS = {
@@ -48,23 +50,26 @@ SCHEMA = {
 
 
 def codex_home() -> Path:
-    return Path(os.environ.get("CODEX_HOME", str(Path.home() / ".codex"))).resolve()
+    manifest = ROOT / "registration.json"
+    registered = json.loads(manifest.read_text(encoding="utf-8")) if manifest.exists() else {}
+    return Path(os.environ.get("CODEX_HOME") or registered.get("codex_home") or
+                Path.home() / ".codex").expanduser().resolve()
 
 
 def data_home() -> Path:
-    return Path(os.environ.get("CODEX_TITLE_UPDATER_HOME", str(ROOT / "data"))).resolve()
+    return Path(os.environ.get("CODEX_TITLE_UPDATER_HOME") or ROOT / "data").expanduser().resolve()
 
 
 def settings() -> dict:
     p = ROOT / "settings.json"
-    return DEFAULTS | (json.loads(p.read_text()) if p.exists() else {})
+    return DEFAULTS | (json.loads(p.read_text(encoding="utf-8")) if p.exists() else {})
 
 
 def atomic_json(path: Path, value: dict):
     path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
     fd, tmp = tempfile.mkstemp(prefix=".write-", dir=path.parent)
     try:
-        with os.fdopen(fd, "w") as f:
+        with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as f:
             json.dump(value, f, ensure_ascii=False, indent=2)
             f.write("\n")
             f.flush()
@@ -94,19 +99,16 @@ def locked_state(thread_id: str):
     d.mkdir(parents=True, exist_ok=True, mode=0o700)
     name = hashlib.sha256(thread_id.encode()).hexdigest()
     p = d / (name + ".json")
-    with open(d / (name + ".lock"), "a") as lock:
+    with contextlib.ExitStack() as stack:
         try:
-            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            stack.enter_context(file_lock(d / (name + ".lock")))
         except BlockingIOError:
             yield None
             return
-        state = json.loads(p.read_text()) if p.exists() else {"thread_id": thread_id}
+        state = json.loads(p.read_text(encoding="utf-8")) if p.exists() else {"thread_id": thread_id}
         # Mutations are explicitly checkpointed before any external side effect.
         state["_path"] = str(p)
-        try:
-            yield state
-        finally:
-            fcntl.flock(lock, fcntl.LOCK_UN)
+        yield state
 
 
 def save(state: dict):
@@ -118,60 +120,124 @@ def scheduled(n: int) -> bool:
 
 
 def executable() -> str:
-    candidates = [os.environ.get("CODEX_TITLE_UPDATER_CLI"), os.environ.get("CODEX_CLI_PATH"),
-                  "/Applications/Codex.app/Contents/Resources/codex",
-                  "/Applications/ChatGPT.app/Contents/Resources/codex-cli/bin/codex",
-                  shutil.which("codex")]
+    explicit = os.environ.get("CODEX_TITLE_UPDATER_CLI") or os.environ.get("CODEX_CLI_PATH")
+    # An explicit override must not silently fall back to another version.
+    candidates = [explicit] if explicit else [
+        "/Applications/Codex.app/Contents/Resources/codex",
+        "/Applications/ChatGPT.app/Contents/Resources/codex-cli/bin/codex",
+        shutil.which("codex.exe"), shutil.which("codex")]
     for p in candidates:
-        if p and Path(p).is_file() and os.access(p, os.X_OK):
-            return str(p)
-    raise RuntimeError("找不到 Codex 可执行文件")
+        if not p:
+            continue
+        path = Path(p).expanduser()
+        if not path.is_file():
+            found = shutil.which(p)
+            if not found:
+                continue
+            path = Path(found)
+        if os.name == "nt" and path.suffix.lower() in (".cmd", ".bat", ".ps1"):
+            # npm's shell shim cannot safely transport arbitrary -c TOML strings.
+            # Find its packaged native binary instead of using shell=True.
+            for base in (path.parent / "node_modules/@openai", path.parent):
+                for pattern in ("codex/vendor/*/codex/codex.exe",
+                                "codex-*/vendor/*/codex/codex.exe",
+                                "codex/node_modules/@openai/codex-*/vendor/*/codex/codex.exe"):
+                    arch = "aarch64" if platform.machine().lower() in ("arm64", "aarch64") else "x86_64"
+                    matches = sorted(p for p in base.glob(pattern) if
+                                     p.parts[-3] == arch + "-pc-windows-msvc" and p.is_file())
+                    if matches:
+                        return str(matches[0].resolve())
+            if explicit:
+                raise RuntimeError("此 Codex shell shim 附近没有原生 codex.exe；请将 CODEX_TITLE_UPDATER_CLI 指向原生可执行文件")
+            continue
+        if os.name == "nt" and path.suffix.lower() != ".exe":
+            continue
+        if os.access(path, os.X_OK):
+            return str(path.resolve())
+    raise RuntimeError("找不到 Codex 可执行文件；请设置 CODEX_TITLE_UPDATER_CLI 为完整可执行文件路径（不含参数或外层引号）")
 
 
 class Rpc:
     """Standard newline JSON-RPC transport; no app database writes."""
     def __init__(self, argv: list[str], timeout: float = 15, env=None):
-        self.proc = subprocess.Popen(argv, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-                                     stderr=subprocess.DEVNULL, env=env, start_new_session=True)
+        self.proc = spawn(argv, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                          stderr=subprocess.DEVNULL, env=env)
         self.timeout = timeout
-        self.buffer = b""
         self.next_id = 0
         self.notifications = []
-        self.selector = selectors.DefaultSelector()
-        self.selector.register(self.proc.stdout, selectors.EVENT_READ)
+        self.incoming = queue.Queue()
+        self.outgoing = queue.Queue()
+        self.closed = False
+        self.reader = threading.Thread(target=self._read, daemon=True, name="title-rpc-read")
+        self.writer = threading.Thread(target=self._write, daemon=True, name="title-rpc-write")
+        self.reader.start()
+        self.writer.start()
 
-    def send(self, value):
-        self.proc.stdin.write((json.dumps(value) + "\n").encode())
-        self.proc.stdin.flush()
+    def _read(self):
+        try:
+            while line := self.proc.stdout.readline():
+                if line.strip():
+                    self.incoming.put(line)
+        except OSError as exc:
+            self.incoming.put(exc)
+        finally:
+            self.incoming.put(None)
+
+    def _write(self):
+        while item := self.outgoing.get():
+            value, done = item
+            try:
+                self.proc.stdin.write(value)
+                self.proc.stdin.flush()
+                done.put(None)
+            except OSError as exc:
+                done.put(exc)
+
+    def _receive(self, end):
+        if time.monotonic() >= end:
+            raise TimeoutError("RPC 超时")
+        try:
+            line = self.incoming.get(timeout=max(0, end - time.monotonic()))
+        except queue.Empty:
+            raise TimeoutError("RPC 超时") from None
+        if line is None:
+            raise RuntimeError("RPC 进程提前退出")
+        if isinstance(line, BaseException):
+            raise line
+        return json.loads(line)
+
+    def send(self, value, end=None):
+        if self.closed:
+            raise RuntimeError("RPC 已关闭")
+        done = queue.Queue()
+        self.outgoing.put(((json.dumps(value, ensure_ascii=False) + "\n").encode("utf-8"), done))
+        try:
+            error = done.get(timeout=max(0, (end or time.monotonic() + self.timeout) - time.monotonic()))
+        except queue.Empty:
+            raise TimeoutError("RPC 写入超时") from None
+        if error:
+            raise error
+
+    def _notification(self, message, end):
+        # Reject server tool/approval requests. Metadata operations never run a model.
+        if "id" in message and "method" in message:
+            self.send({"jsonrpc": "2.0", "id": message["id"],
+                       "error": {"code": -32601, "message": "unsupported"}}, end)
+        elif "method" in message:
+            self.notifications.append(message)
 
     def call(self, method, params):
         self.next_id += 1
         request_id = self.next_id
-        self.send({"jsonrpc": "2.0", "id": request_id, "method": method, "params": params})
         end = time.monotonic() + self.timeout
+        self.send({"jsonrpc": "2.0", "id": request_id, "method": method, "params": params}, end)
         while True:
-            while b"\n" in self.buffer:
-                line, self.buffer = self.buffer.split(b"\n", 1)
-                if not line.strip():
-                    continue
-                message = json.loads(line)
-                if message.get("id") == request_id:
-                    if "error" in message:
-                        raise RuntimeError(f"{method}: {message['error']}")
-                    return message["result"]
-                # No model execution is requested here. Reject server tool/approval requests.
-                if "id" in message and "method" in message:
-                    self.send({"jsonrpc": "2.0", "id": message["id"],
-                               "error": {"code": -32601, "message": "unsupported"}})
-                elif "method" in message:
-                    self.notifications.append(message)
-            remaining = end - time.monotonic()
-            if remaining <= 0 or not self.selector.select(remaining):
-                raise TimeoutError(f"{method} 超时")
-            chunk = os.read(self.proc.stdout.fileno(), 65536)
-            if not chunk:
-                raise RuntimeError(f"{method}: RPC 进程提前退出")
-            self.buffer += chunk
+            message = self._receive(end)
+            if message.get("id") == request_id and "method" not in message:
+                if "error" in message:
+                    raise RuntimeError(f"{method}: {message['error']}")
+                return message["result"]
+            self._notification(message, end)
 
     def wait_notification(self, method, timeout=90):
         end = time.monotonic() + timeout
@@ -179,33 +245,16 @@ class Rpc:
             for i, item in enumerate(self.notifications):
                 if item.get("method") == method:
                     return self.notifications.pop(i)
-            while b"\n" in self.buffer:
-                line, self.buffer = self.buffer.split(b"\n", 1)
-                if line.strip():
-                    item = json.loads(line)
-                    if "method" in item and "id" not in item:
-                        self.notifications.append(item)
-                    elif "id" in item and "method" in item:
-                        self.send({"id": item["id"], "error": {"code": -32601, "message": "unsupported"}})
-            if any(item.get("method") == method for item in self.notifications):
-                continue
-            remaining = end - time.monotonic()
-            if remaining <= 0 or not self.selector.select(remaining):
-                raise TimeoutError(f"等待 {method} 超时")
-            chunk = os.read(self.proc.stdout.fileno(), 65536)
-            if not chunk:
-                raise RuntimeError("等待通知时 RPC 提前退出")
-            self.buffer += chunk
+            self._notification(self._receive(end), end)
 
     def close(self):
-        self.selector.close()
-        if self.proc.poll() is None:
-            self.proc.terminate()
-            try:
-                self.proc.wait(timeout=2)
-            except subprocess.TimeoutExpired:
-                os.killpg(self.proc.pid, signal.SIGKILL)
-                self.proc.wait()
+        if self.closed:
+            return
+        self.closed = True
+        stop_process(self.proc)
+        self.outgoing.put(None)
+        self.writer.join(timeout=3)
+        self.reader.join(timeout=3)
         self.proc.stdin.close()
         self.proc.stdout.close()
 
@@ -258,7 +307,7 @@ def transcript(path: str, thread_id: str) -> dict:
     turns = {}
     order = []
     active = None
-    with open(path) as f:
+    with open(path, encoding="utf-8") as f:
         for line in f:
             try:
                 entry = json.loads(line)
@@ -355,9 +404,10 @@ def judge(old_title: str, context: list, config: dict) -> dict:
     # no persisted conversation, no apps/plugins/MCP, no web and a read-only sandbox.
     prompt = review_prompt(old_title, context, initial_naming=config.get("initial_naming", False),
                            initial_correction=config.get("initial_correction", False))
+    data_home().mkdir(parents=True, exist_ok=True, mode=0o700)
     with tempfile.TemporaryDirectory(prefix="review-", dir=data_home()) as td:
         td = Path(td)
-        (td / "schema.json").write_text(json.dumps(SCHEMA))
+        (td / "schema.json").write_text(json.dumps(SCHEMA), encoding="utf-8")
         argv = [executable(), "exec", "--disable", "hooks", "--disable", "apps", "--disable", "plugins",
                 "--disable", "shell_tool", "--disable", "multi_agent", "--disable", "multi_agent_v2",
                 "-c", "notify=[]", "-c", 'web_search="disabled"',
@@ -369,7 +419,7 @@ def judge(old_title: str, context: list, config: dict) -> dict:
         # user's provider/auth configuration; do not copy or print credentials.
         user_config = codex_home() / "config.toml"
         if user_config.exists():
-            raw = tomllib.loads(user_config.read_text())
+            raw = tomllib.loads(user_config.read_text(encoding="utf-8"))
             for name in raw.get("mcp_servers", {}):
                 # This CLI's -c dotted-key parser treats quotes literally. MCP names
                 # use ordinary identifier characters; fail closed for other keys.
@@ -380,17 +430,12 @@ def judge(old_title: str, context: list, config: dict) -> dict:
             argv[2:2] = ["--model", config["model"]]
         env = os.environ.copy()
         env["CODEX_TITLE_UPDATER_REVIEW"] = "1"
-        proc = subprocess.Popen(argv, stdin=subprocess.PIPE, stdout=subprocess.DEVNULL,
-                                stderr=subprocess.DEVNULL, env=env, start_new_session=True)
-        try:
-            proc.communicate(prompt.encode(), timeout=config["review_timeout"])
-        except BaseException:
-            os.killpg(proc.pid, signal.SIGKILL)
-            proc.wait()
-            raise
+        proc = spawn(argv, stdin=subprocess.PIPE, stdout=subprocess.DEVNULL,
+                     stderr=subprocess.DEVNULL, env=env)
+        communicate(proc, prompt.encode("utf-8"), config["review_timeout"])
         if proc.returncode != 0:
             raise RuntimeError(f"标题检查进程失败（exit {proc.returncode}）")
-        return json.loads((td / "result.json").read_text())
+        return json.loads((td / "result.json").read_text(encoding="utf-8"))
 
 
 def valid_proposal(result, old, config):
@@ -519,6 +564,7 @@ def process(payload: dict, config=None, backend=None, reviewer=None, dry_run=Fal
 
 
 def main():
+    configure_stdio()
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("command", choices=["hook", "inspect", "lock", "unlock", "doctor"])
     ap.add_argument("thread_id", nargs="?")

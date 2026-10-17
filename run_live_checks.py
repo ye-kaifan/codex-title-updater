@@ -21,14 +21,14 @@ def main():
     args = ap.parse_args()
     args.work_dir.mkdir(parents=True, exist_ok=True)
     args.report.parent.mkdir(parents=True, exist_ok=True)
-    report = json.loads(args.report.read_text()) if args.api_only and args.report.exists() else {
+    report = json.loads(args.report.read_text(encoding="utf-8")) if args.api_only and args.report.exists() else {
         "input_provenance": "Only tests/synthetic_cases.json; invented test data", "checks": []}
     # Live judgments inherit the already configured provider. Only hardcoded synthetic
     # texts enter the prompt; no real session is opened by this test.
     os.environ["CODEX_TITLE_UPDATER_HOME"] = str(args.work_dir.resolve() / "review-data")
     ar.data_home().mkdir(parents=True, exist_ok=True)
     config = ar.settings()
-    cases = json.loads((ar.ROOT / "tests/synthetic_cases.json").read_text())
+    cases = json.loads((ar.ROOT / "tests/synthetic_cases.json").read_text(encoding="utf-8"))
     for case in ([] if args.api_only else cases):
         review_config = config | {"initial_naming": case.get("initial_naming", False),
                                   "initial_correction": case.get("initial_correction", False)}
@@ -37,7 +37,7 @@ def main():
         entry = {"case": case["case"], "result": result, "accepted": accepted,
                  "pass": accepted == case["expect_rename"]}
         report["checks"].append(entry)
-        args.report.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n")
+        args.report.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
         print(json.dumps(entry, ensure_ascii=False), flush=True)
     # thread/start + name/set/name/read use an empty, isolated Codex home. No user
     # conversation is renamed and no model turn is started for this API check.
@@ -56,7 +56,7 @@ def main():
             report["checks"].append(entry)
             print(json.dumps(entry, ensure_ascii=False), flush=True)
     report["pass"] = all(c["pass"] for c in report["checks"])
-    args.report.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n")
+    args.report.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     if not report["pass"]:
         raise SystemExit(1)
 

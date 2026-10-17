@@ -63,7 +63,7 @@ class HookTests(unittest.TestCase):
             if i < n and i not in (incomplete or []):
                 rows.append({"type": "event_msg", "payload": {"type": "task_complete", "turn_id": tid,
                             "last_agent_message": "回答"}})
-        p.write_text("".join(json.dumps(x) + "\n" for x in rows))
+        p.write_text("".join(json.dumps(x) + "\n" for x in rows), encoding="utf-8")
         return {"hook_event_name": "Stop", "session_id": sid, "turn_id": f"t{n}",
                 "transcript_path": str(p), "last_assistant_message": "本轮已完成", "stop_hook_active": False}
 
@@ -80,7 +80,7 @@ class HookTests(unittest.TestCase):
 
     def events(self):
         p = self.root / "data/audit.jsonl"
-        return [json.loads(l) for l in p.read_text().splitlines()] if p.exists() else []
+        return [json.loads(l) for l in p.read_text(encoding="utf-8").splitlines()] if p.exists() else []
 
     def test_schedule_exactly_1_2_6_8_10(self):
         self.assertEqual([i for i in range(1, 15) if ar.scheduled(i)], [1, 2, 6, 8, 10, 12, 14])
@@ -364,7 +364,7 @@ class HookTests(unittest.TestCase):
     def test_native_plain_composer_message_context(self):
         p = self.payload(2)
         file = Path(p["transcript_path"])
-        records = [json.loads(l) for l in file.read_text().splitlines()]
+        records = [json.loads(l) for l in file.read_text(encoding="utf-8").splitlines()]
         for r in records:
             v = r.get("payload", {})
             if r["type"] == "response_item" and v.get("role") == "user":
@@ -374,7 +374,7 @@ class HookTests(unittest.TestCase):
                     v["content"][0]["text"] = "# AGENTS.md instructions\ncontext only"
                 if kind == "additional_content.codex_apps_open_page":
                     v["content"][0]["text"] = '<external_codex_apps_open_page>{"page_id":null}</external_codex_apps_open_page>'
-        file.write_text("".join(json.dumps(r) + "\n" for r in records))
+        file.write_text("".join(json.dumps(r) + "\n" for r in records), encoding="utf-8")
         parsed = ar.transcript(str(file), "thread-a")
         self.assertIn("问题2", parsed["turns"]["t2"]["user"])
         self.assertNotIn("AGENTS", parsed["turns"]["t2"]["user"])
@@ -386,7 +386,7 @@ class HookTests(unittest.TestCase):
             ar.process(p, self.cfg, self.backend)
         p = self.payload(2)
         file = Path(p["transcript_path"])
-        file.write_text(file.read_text().replace('"thread_source": "user"', '"thread_source": "subagent"'))
+        file.write_text(file.read_text(encoding="utf-8").replace('"thread_source": "user"', '"thread_source": "subagent"'), encoding="utf-8")
         with self.assertRaises(ValueError):
             ar.process(p, self.cfg, self.backend)
 
@@ -428,17 +428,17 @@ class InstallTests(unittest.TestCase):
                 "Stop": [{"matcher": "*", "hooks": [{"type": "command", "command": "other-stop"},
                            {"type": "mcp_tool", "server": "example", "tool": "noop"},
                            {"type": "prompt", "prompt": "preserve this"}]}]}}
-            (root / "hooks.json").write_text(json.dumps(original))
-            (root / "config.toml").write_text('notify=["unchanged"]\n')
+            (root / "hooks.json").write_text(json.dumps(original), encoding="utf-8")
+            (root / "config.toml").write_text('notify=["unchanged"]\n', encoding="utf-8")
             target = root / "hooks/codex-title-updater"
             target.mkdir(parents=True)
             python = Path("/example/python3")
             self.assertTrue(mutate_hooks(root, target, python))
             self.assertFalse(mutate_hooks(root, target, python))
-            self.assertEqual(len(json.loads((root / "hooks.json").read_text())["hooks"]["Stop"]), 2)
+            self.assertEqual(len(json.loads((root / "hooks.json").read_text(encoding="utf-8"))["hooks"]["Stop"]), 2)
             self.assertTrue(mutate_hooks(root, target, python, remove=True))
-            self.assertEqual(json.loads((root / "hooks.json").read_text()), original)
-            self.assertEqual((root / "config.toml").read_text(), 'notify=["unchanged"]\n')
+            self.assertEqual(json.loads((root / "hooks.json").read_text(encoding="utf-8")), original)
+            self.assertEqual((root / "config.toml").read_text(encoding="utf-8"), 'notify=["unchanged"]\n')
             self.assertEqual(len(list((target / "backups").glob("*.json"))), 2)
 
     def test_reinstall_with_different_python_does_not_duplicate(self):
@@ -446,9 +446,9 @@ class InstallTests(unittest.TestCase):
             root = Path(td);target = root / "install";target.mkdir()
             mutate_hooks(root, target, Path("/example/python1"))
             mutate_hooks(root, target, Path("/example/python2"))
-            self.assertEqual(len(json.loads((root / "hooks.json").read_text())["hooks"]["Stop"]), 1)
+            self.assertEqual(len(json.loads((root / "hooks.json").read_text(encoding="utf-8"))["hooks"]["Stop"]), 1)
             mutate_hooks(root, target, Path("/example/python3"), remove=True)
-            self.assertNotIn("Stop", json.loads((root / "hooks.json").read_text())["hooks"])
+            self.assertNotIn("Stop", json.loads((root / "hooks.json").read_text(encoding="utf-8"))["hooks"])
 
 
 if __name__ == "__main__":

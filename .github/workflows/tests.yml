@@ -11,8 +11,9 @@ jobs:
   unit:
     strategy:
       matrix:
-        os: [ubuntu-latest, macos-latest]
-        python: ['3.11', '3.14']
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        python: ['3.11', '3.12', '3.14']
+      fail-fast: false
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v7
@@ -21,4 +22,21 @@ jobs:
       - uses: actions/setup-python@v7
         with:
           python-version: ${{ matrix.python }}
-      - run: bash run_tests.sh
+      - name: Offline tests and installation lifecycle (POSIX)
+        if: runner.os != 'Windows'
+        run: bash run_tests.sh
+      - name: Offline tests and installation lifecycle (native Windows)
+        if: runner.os == 'Windows'
+        run: .\run_tests.ps1
+      - name: Install the verified Codex core (no sign-in)
+        if: matrix.python == '3.12'
+        run: npm install --global @openai/codex@0.163.0-alpha.10.2
+      - name: Native App Server and installed doctor in an isolated home (no model calls)
+        if: matrix.python == '3.12'
+        run: python -X utf8 run_native_checks.py --work-dir work/native --report work/native-report.json
+      - uses: actions/upload-artifact@v6
+        if: matrix.python == '3.12' && !cancelled()
+        with:
+          name: native-${{ matrix.os }}
+          path: work/native-report.json
+          if-no-files-found: warn
