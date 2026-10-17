@@ -1,59 +1,72 @@
 # Codex Title Updater
 
-让标题跟上内容，只在确有需要时更新。<br>
-Keep titles in sync with the conversation—update only when it matters.
+**让 Codex 的标题跟上对话，回头找聊天更方便**。<br>
+**Keep Codex titles relevant as your conversation evolves, so chats are easier to find**.
 
-一个保守的 Codex `Stop` Hook：主要话题变化、原标题已不准确时，自动更新为简洁中文标题，保留必要的项目名和技术词。<br>
-A conservative Codex `Stop` hook that updates an outdated title only after a meaningful topic change. Titles are concise Chinese, preserving project names and technical terms.
+第一轮只是开场，后面才聊到正题，侧栏标题却还停在开头。Codex Title Updater 会在几轮对话后检查标题：当主要话题已变化、原标题已不准确时，自动更新为简洁中文，保留项目名和技术词。<br>
+The first exchange is often just a starting point. When the real task takes shape later, the sidebar title can lag behind. Codex Title Updater periodically checks the conversation and replaces an outdated title when the main topic has changed. New titles are concise Chinese, preserving project names and technical terms.
 
-## 让 Codex 帮你安装 / Install with Codex
+它通过 Codex 的 `Stop` Hook 在一轮结束时触发。你照常聊天；标题仍然准确时保持不变，继续排错、测试或润色也不会仅因此换名。<br>
+It runs through Codex's `Stop` hook at the end of a turn. Chat as usual: accurate titles stay put, and routine debugging, testing or editing does not by itself trigger a rename.
 
-把下面这段话复制到 Codex 对话中，让它帮你检查环境并完成安装：
+## 复制提示词，让 Codex 安装 / Install with a prompt
+
+适用于支持原生 Hooks 和 App Server 的已登录 Codex，需要 **Python 3.11+**。macOS 已验证；Linux 已通过单元测试，完整使用流程仍待验证；Windows 暂不支持。<br>
+Requires a signed-in Codex with native Hooks and App Server, plus **Python 3.11+**. Verified on macOS; Linux unit tests pass, but the full workflow remains unverified. Windows is not supported yet.
+
+把下面这段话发给 Codex，无需自己逐条执行安装命令：<br>
+Paste this into Codex to have it handle the installation:
 
 ```text
 请帮我安装 https://github.com/ye-kaifan/codex-title-updater。
-先检查环境是否兼容，保留已有的 Codex 配置。
-安装后验证是否就绪，并引导我完成必要的启用步骤。
+先阅读 README，检查我的 Codex 和 Python 是否兼容，然后按仓库现有方案安装。
+保留已有配置和其他 Hook，不要从头重写。
+安装后检查注册、启用和信任状态，并用测试对话验证标题检查确实触发。
+需要我手动审核信任时，请告诉我具体操作；完成后告诉我如何停用和恢复。
 ```
-
-Copy this prompt into a Codex conversation to have it check your environment and install the hook:
 
 ```text
 Please install https://github.com/ye-kaifan/codex-title-updater for me.
-Check compatibility first and preserve my existing Codex configuration.
-Verify the installation and guide me through any remaining activation steps.
+Read the README, check my Codex and Python compatibility, then use the existing installer.
+Preserve my configuration and other hooks; do not reimplement the project.
+Check registration, enablement and trust, then verify that a title check runs in a test conversation.
+Guide me through any manual trust review, and explain how to disable and re-enable it.
 ```
 
-安装后可能需要你在 Codex 的 `/hooks` 中审核并信任该 Hook；按引导完成即可。标题检查会使用你配置的模型服务，消耗相应额度或产生 API 费用。<br>
-You may need to review and trust the hook in Codex's `/hooks` menu after installation. Title checks use your configured model provider and consume quota or incur API charges.
+**安装后需在 `/hooks` 中审核并信任，才会运行**。 完成启用后，在新对话中正常聊两轮即可检查触发结果；标题合适时，结果会是“保留”。<br>
+**Review and trust the hook in `/hooks` before it can run**. Once enabled, complete two turns in a new conversation to check that it triggers. Keeping an already suitable title is a successful check.
 
-## 日常使用也可以直接说 / Everyday prompts
+标题判断会调用你在 Codex 中配置的模型服务，消耗额度或产生 API 费用，也可能增加轮末等待时间。<br>
+Title reviews use your configured Codex model provider, consume quota or incur API charges, and may add a wait at the end of a turn.
 
-| 中文提示词 | English prompt |
-| --- | --- |
-| 请检查 Codex Title Updater 是否已安装、启用并受信任，查看最近一次标题检查结果。 | Check whether Codex Title Updater is installed, enabled and trusted, and show the latest title check result. |
-| 请停用 Codex Title Updater，保留设置和会话状态。 | Disable Codex Title Updater, keeping its settings and conversation state. |
-| 请重新启用 Codex Title Updater，并检查是否还需要完成启用步骤。 | Re-enable Codex Title Updater and check for any remaining activation steps. |
-| 请卸载 Codex Title Updater，保留会话状态和备份，不影响其他 Hook。 | Uninstall Codex Title Updater, keeping conversation state and backups and preserving other hooks. |
+## 标题什么时候会改 / When titles change
 
-## 规则 / Behavior
+- **先多聊几轮**。 第 2 轮首次检查，随后在第 6、8、10…轮检查；成功改名后，至少间隔 4 轮才再检查。<br>
+  **Wait for context**. Check after turn 2, then turns 6, 8, 10, …; after a successful rename, wait at least 4 turns before checking again.
+- **只在原标题失准时改**。 主要话题须有实质变化；简单追问、短暂插问和换一种措辞都不是改名理由。<br>
+  **Rename only when needed**. The main topic must change substantially; follow-up questions, brief asides and stylistic rewording do not qualify.
+- **每个对话单独记数**。 仅统计完成的真实用户主会话轮次，工具调用、子代理和自动续跑不计入；重启后继续，同一轮不重复处理。<br>
+  **Track each chat separately**. Count completed human turns in the main conversation, excluding tool calls, subagents and automatic continuations. State survives restarts; duplicate events are ignored.
+- **可以固定标题**。 默认首次接管已有标题，此后检测到外部改名便暂停该对话的自动更新；首次遇到的手动标题无法自动识别，保护方法见下方技术说明。<br>
+  **You can keep a title fixed**. Existing titles are adopted on first observation; a later external rename pauses updates for that chat. Pre-existing manual titles cannot be identified automatically; see the protection options below.
 
-| 中文 | English |
-| --- | --- |
-| 第 2 轮首次检查；此后在第 6、8、10…轮检查。 | Check after turn 2, then turns 6, 8, 10, … |
-| 每次成功更新后，至少间隔 4 轮；保持原标题不重置间隔。 | Wait at least 4 turns after each successful update. Keeping a title does not reset the interval. |
-| 同一任务的继续实现、排错、测试、润色和短暂插问不触发换标题。 | Follow-ups, debugging, testing, polishing and brief asides keep the current title. |
-| 仅统计完成的真实用户主会话轮次；工具调用、子代理和自动续跑不计入。 | Count completed human turns in the main conversation; exclude tools, subagents and automatic continuations. |
-| 各会话独立计数，重启后继续；同一轮不会重复处理。 | Count each conversation separately, retain state across restarts and process each turn only once. |
-| 首次自动接管已有标题；此后检测到外部标题变化便锁定，直到手动解锁。 | Adopt existing titles on first observation; later external title changes lock the conversation until explicitly unlocked. |
+## 日常操作，直接告诉 Codex / Everyday prompts
+
+| 想做什么 / Goal | 中文提示词 / Chinese prompt | English prompt |
+| --- | --- | --- |
+| 检查 / Check | 检查 Codex Title Updater 是否就绪，告诉我最近一次为什么保留或修改标题。 | Check whether Codex Title Updater is ready and explain its latest title decision. |
+| 固定 / Lock | 用 Codex Title Updater 锁定当前对话标题。 | Lock this chat's title with Codex Title Updater. |
+| 停用 / Pause | 停用 Codex Title Updater，保留设置和会话状态。 | Disable Codex Title Updater and keep its settings and state. |
+| 恢复 / Resume | 重新启用 Codex Title Updater，并检查信任状态。 | Re-enable Codex Title Updater and check its trust status. |
+| 卸载 / Uninstall | 卸载 Codex Title Updater，保留状态和备份，不影响其他 Hook。 | Uninstall Codex Title Updater, retaining state and backups and preserving other hooks. |
 
 <details>
 <summary>手动安装、命令行操作与技术说明 / Manual installation, CLI controls & technical details</summary>
 
 ## 手动安装与启用 / Manual install & enable
 
-需要 **Python 3.11+**，无第三方 Python 依赖；Codex 须已登录，并支持原生 Hooks 与 App Server。macOS 已验证，内核版本为 `0.163.0-alpha.10.2`；Linux 尚未验证完整生命周期，Windows 暂不支持。<br>
-Requires **Python 3.11+**, no third-party Python packages, and a signed-in Codex with native Hooks and App Server. Verified on macOS with core `0.163.0-alpha.10.2`; full lifecycle on Linux is unverified. Windows is not supported yet.
+无第三方 Python 依赖。macOS 完整流程验证使用的 Codex 内核为 `0.163.0-alpha.10.2`；自动化测试覆盖 macOS、Ubuntu 和 Python 3.11、3.14。<br>
+No third-party Python packages. The full macOS workflow was verified with Codex core `0.163.0-alpha.10.2`; automated tests cover macOS, Ubuntu, and Python 3.11/3.14.
 
 ```bash
 git clone https://github.com/ye-kaifan/codex-title-updater.git
@@ -100,8 +113,8 @@ python3 ~/.codex/hooks/codex-title-updater/title_updater.py lock THREAD_ID
 python3 ~/.codex/hooks/codex-title-updater/title_updater.py unlock THREAD_ID
 ```
 
-设置文件为 `~/.codex/hooks/codex-title-updater/settings.json`：`model: null` 使用当前 Codex 配置，`adopt_existing: false` 可保护首次遇到的已有标题。`unlock` 接管当前标题，但保留四轮间隔。需要固定标题时，先 `lock` 再修改。<br>
-Edit `~/.codex/hooks/codex-title-updater/settings.json`: `model: null` inherits Codex settings; `adopt_existing: false` protects titles already present on first observation. `unlock` adopts the current title without resetting the cooldown. For a fixed title, `lock` before editing.
+设置文件为 `~/.codex/hooks/codex-title-updater/settings.json`：`model: null` 使用 Codex 默认配置的模型，检查时默认使用 `reasoning_effort: "low"`；`adopt_existing: false` 可保护首次遇到的已有标题。`unlock` 接管当前标题，但保留四轮间隔。需要固定标题时，先 `lock` 再修改。<br>
+Edit `~/.codex/hooks/codex-title-updater/settings.json`: `model: null` uses the default model in your Codex configuration, with `reasoning_effort: "low"` for reviews; `adopt_existing: false` protects titles already present on first observation. `unlock` adopts the current title without resetting the cooldown. For a fixed title, `lock` before editing.
 
 `CODEX_TITLE_UPDATER_PYTHON` 可指定脚本使用的 Python；`CODEX_TITLE_UPDATER_CLI` 可指定 Codex 可执行文件；`CODEX_TITLE_UPDATER_HOME` 可指定状态目录。后两项需在运行 Hook 的 Codex 进程环境中设置。<br>
 Use `CODEX_TITLE_UPDATER_PYTHON` to choose Python, `CODEX_TITLE_UPDATER_CLI` to choose the Codex executable, and `CODEX_TITLE_UPDATER_HOME` to relocate state. The latter two must be set in the Codex process running the hook.
