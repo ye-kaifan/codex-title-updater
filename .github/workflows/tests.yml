@@ -15,8 +15,10 @@ jobs:
         python: ['3.11', '3.14']
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v7
         with:
           python-version: ${{ matrix.python }}
       - run: bash run_tests.sh
