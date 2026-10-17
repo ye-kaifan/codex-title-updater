@@ -7,6 +7,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+import venv
 
 import title_updater as updater
 
@@ -16,6 +17,9 @@ class ManageCliTests(unittest.TestCase):
         with tempfile.TemporaryDirectory(prefix="title updater test ") as td:
             home = Path(td).resolve() / "codex 中文 home & %PATH% ! ' $`"
             home.mkdir()
+            venv_root = Path(td).resolve() / "Python 中文 & %PATH% ! '"
+            venv.EnvBuilder(with_pip=False).create(venv_root)
+            python = venv_root / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
             target = home / "hooks/codex-title-updater"
             original = {"description": "unrelated", "hooks": {
                 "Stop": [{"hooks": [{"type": "command", "command": "other-hook"}]}]}}
@@ -23,13 +27,13 @@ class ManageCliTests(unittest.TestCase):
             config = b'notify=["keep-this"]\n[features]\nhooks=true\n'
             (home / "config.toml").write_bytes(config)
             env = os.environ | {"CODEX_HOME": str(home),
-                                "CODEX_TITLE_UPDATER_PYTHON": sys.executable,
+                                "CODEX_TITLE_UPDATER_PYTHON": str(python),
                                 "CODEX_TITLE_UPDATER_HOME": str(target / "data"),
                                 "CODEX_TITLE_UPDATER_REVIEW": "0"}
 
             def run(command):
                 return subprocess.run(
-                    [sys.executable, str(updater.ROOT / "manage.py"), command],
+                    [str(python), str(updater.ROOT / "manage.py"), command],
                     env=env, check=True, capture_output=True, text=True, encoding="utf-8").stdout
 
             first = json.loads(run("install"))
@@ -60,7 +64,7 @@ class ManageCliTests(unittest.TestCase):
             if os.name == "nt":
                 argv = [os.environ.get("COMSPEC", "cmd.exe"), "/d", "/s", "/c", command]
             else:
-                self.assertEqual(shlex.split(command), [sys.executable, "-X", "utf8",
+                self.assertEqual(shlex.split(command), [str(python), "-X", "utf8",
                                                        str(target / "title_updater.py"), "hook"])
                 argv = ["/bin/sh", "-c", command]
             # The installed command must work independently of the checkout/cwd.

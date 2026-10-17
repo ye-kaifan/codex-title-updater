@@ -53,6 +53,12 @@ def main():
             assert json.loads(manage("status"))["registered_hooks"] == 1
             assert not json.loads(manage("install"))["hooks_changed"]
             diagnostic = json.loads(manage("doctor"))
+            # Direct installed commands must also retain their selected home
+            # when launched from an ordinary shell without CODEX_HOME.
+            direct = subprocess.run([sys.executable, "-X", "utf8", str(target / "title_updater.py"), "doctor"],
+                                    env={k: v for k, v in env.items() if k != "CODEX_HOME"},
+                                    check=True, capture_output=True, text=True, encoding="utf-8", timeout=60)
+            assert json.loads(direct.stdout)["hooks"] == diagnostic["hooks"]
             registered = json.loads((target / "registration.json").read_text(encoding="utf-8"))["command"]
             items = [item for group in diagnostic["hooks"]["data"] for item in group["hooks"]
                      if item.get("command") == registered]

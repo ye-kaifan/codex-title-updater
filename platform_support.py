@@ -59,7 +59,7 @@ def hook_command(python: Path, script: Path) -> str:
     # native commands. PS 5.1 otherwise also defaults to lossy ASCII pipelines.
     quote = lambda s: "'" + str(s).replace("'", "''") + "'"
     program = (
-        "$ErrorActionPreference='Stop'; "
+        "$ErrorActionPreference='Stop'; $ProgressPreference='SilentlyContinue'; "
         "$OutputEncoding=[Console]::OutputEncoding=New-Object System.Text.UTF8Encoding($false); "
         "[Console]::InputEncoding=New-Object System.Text.UTF8Encoding($false); "
         "[Console]::In.ReadToEnd() | & " + quote(python) + " -X utf8 " + quote(script) +

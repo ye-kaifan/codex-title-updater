@@ -273,7 +273,7 @@ class Backend:
         argv = [executable(), "app-server", "--stdio"]
         if disable_hooks:
             argv += ["--disable", "hooks"]
-        rpc = Rpc(argv, self.config["rpc_timeout"])
+        rpc = Rpc(argv, self.config["rpc_timeout"], env=os.environ | {"CODEX_HOME": str(codex_home())})
         try:
             rpc.call("initialize", {"clientInfo": {"name": "codex_title_updater",
                                                    "version": "0.1.0"},
@@ -429,6 +429,7 @@ def judge(old_title: str, context: list, config: dict) -> dict:
         if config.get("model"):
             argv[2:2] = ["--model", config["model"]]
         env = os.environ.copy()
+        env["CODEX_HOME"] = str(codex_home())
         env["CODEX_TITLE_UPDATER_REVIEW"] = "1"
         proc = spawn(argv, stdin=subprocess.PIPE, stdout=subprocess.DEVNULL,
                      stderr=subprocess.DEVNULL, env=env)
