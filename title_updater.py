@@ -125,7 +125,8 @@ def executable() -> str:
     candidates = [explicit] if explicit else [
         "/Applications/Codex.app/Contents/Resources/codex",
         "/Applications/ChatGPT.app/Contents/Resources/codex-cli/bin/codex",
-        shutil.which("codex.exe"), shutil.which("codex")]
+        shutil.which("codex.exe"), shutil.which("codex.cmd") if os.name == "nt" else None,
+        shutil.which("codex.ps1") if os.name == "nt" else None, shutil.which("codex")]
     for p in candidates:
         if not p:
             continue

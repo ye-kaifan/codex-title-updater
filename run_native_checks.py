@@ -69,6 +69,19 @@ def main():
             # so CI evidence does not imply that installation granted trust.
             report["hooks"] = diagnostic["hooks"]
             report["checks"].append("install_reinstall_status_doctor")
+            # Verify actual native argument parsing (not a fake Python peer):
+            # quotes/TOML, Unicode and shell metacharacters remain single values.
+            # This model name is a fixture for config/read; no turn is started.
+            model = "fixture 中文 model & % ! ' ` $"
+            argv = [cli, "app-server", "--stdio", "--disable", "hooks", "-c",
+                    "model=" + json.dumps(model, ensure_ascii=False),
+                    "-c", 'model_reasoning_effort="low"']
+            with ar.Rpc(argv, env=env) as rpc:
+                rpc.call("initialize", {"clientInfo": {"name": "offline_argv_probe", "version": "0.1.0"}})
+                rpc.send({"method": "initialized"})
+                cfg = rpc.call("config/read", {"includeLayers": False})["config"]
+                assert cfg["model"] == model and cfg["model_reasoning_effort"] == "low"
+            report["checks"].append("native_argv_toml_unicode_metacharacters")
             with ar.Backend(ar.DEFAULTS).server() as rpc:
                 thread = rpc.call("thread/start", {"cwd": str(home), "ephemeral": False,
                                                    "approvalPolicy": "never", "sandbox": "read-only"})["thread"]

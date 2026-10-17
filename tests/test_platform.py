@@ -121,6 +121,12 @@ class DiscoveryTests(unittest.TestCase):
             binary.touch()
             with patch.dict(os.environ, {"CODEX_TITLE_UPDATER_CLI": str(shim)}):
                 self.assertEqual(ar.executable(), str(binary.resolve()))
+            # Python 3.12+ can prefer npm's extensionless POSIX shim. Search the
+            # Windows shim explicitly rather than attempting to launch that file.
+            with patch.dict(os.environ, {"CODEX_TITLE_UPDATER_CLI": "", "CODEX_CLI_PATH": ""}), \
+                 patch.object(ar.shutil, "which", side_effect=lambda name: {
+                     "codex": str(root / "codex"), "codex.cmd": str(shim)}.get(name)):
+                self.assertEqual(ar.executable(), str(binary.resolve()))
 
 
 class ReviewProcessTests(unittest.TestCase):
