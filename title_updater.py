@@ -322,10 +322,11 @@ def review_context(parsed, ids, current_message, config):
 
 def review_prompt(old_title: str, context: list, *, initial_naming=False, initial_correction=False) -> str:
     if initial_naming:
-        policy = """本次是第 1 轮完成后的初次命名：请根据首轮真实用户需求和已完成的回答，主动生成一个具体、简洁的中文标题。
-初次命名不要求话题变化或原标题失准；即使旧标题与当前话题相同，也可以完成初次命名。
-生成的标题与原标题不同时设 rename=true；若已经完全相同则保持，不为凑一次改名而换措辞。
-topic_changed 与 old_title_inaccurate 仍如实判断，可以均为 false，不得为了改名编造话题变化。
+        policy = """本次是第 1 轮完成后对 Codex 现有标题的补充检查，不是无条件重新命名。
+先结合首轮真实用户需求和已完成的回答，判断原标题是否准确表达具体对象和核心任务。
+原标题准确时必须保持，即使能生成另一种标题也不得只为换措辞、缩短或翻译而改名。
+仅当原标题明显失准或缺失，例如主要是一串会话链接、上下文标记或无意义的截断开场白，才允许校正并设 rename=true 和 old_title_inaccurate=true。
+不要求话题变化；topic_changed 仍如实判断，可以为 false，不得为了校正标题而编造换题。
 """
     elif initial_correction:
         policy = """本次是尚未成功自动命名的会话的初始标题校正，可能已错过第一轮命名。
@@ -393,9 +394,7 @@ def judge(old_title: str, context: list, config: dict) -> dict:
 
 
 def valid_proposal(result, old, config):
-    if config.get("initial_naming"):
-        required = ("rename",)
-    elif config.get("initial_correction"):
+    if config.get("initial_naming") or config.get("initial_correction"):
         required = ("rename", "old_title_inaccurate")
     else:
         required = ("rename", "topic_changed", "old_title_inaccurate")
@@ -479,9 +478,9 @@ def process(payload: dict, config=None, backend=None, reviewer=None, dry_run=Fal
         if n - state.get("last_rename_round", -1000) < 4:
             audit("cooldown", thread_id=thread_id, round=n)
             return
-        # Only turn 1 gets unconditional initial naming. Until the first successful
-        # automatic rename, later checks may correct an inaccurate initial title
-        # without inventing a topic change; accurate titles must still be kept.
+        # Turn 1 supplements Codex's existing title instead of renaming it blindly.
+        # Until the first successful automatic rename, inaccurate initial titles
+        # may be corrected without inventing a topic change; accurate titles stay.
         initial_correction = n > 1 and state.get("last_rename_round") is None
         review_config = config | {"initial_naming": n == 1,
                                   "initial_correction": initial_correction}

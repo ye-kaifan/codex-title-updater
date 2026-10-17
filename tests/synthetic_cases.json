@@ -1,8 +1,8 @@
 [
   {
-    "case": "first_turn_initial_title",
+    "case": "first_turn_inaccurate_link_title",
     "initial_naming": true,
-    "old_title": "讨论按钮",
+    "old_title": "codex://threads/example-game 帮我看看这…",
     "context": [
       {
         "user": "请修复这个虚构拼图游戏的开始按钮在手机上点不动的问题。",
@@ -104,6 +104,30 @@
       {
         "user": "补充保存拼图进度的步骤。",
         "assistant": "已在 TileKit 使用说明中补充保存进度。"
+      }
+    ],
+    "expect_rename": false
+  },
+  {
+    "case": "first_turn_accurate_native_title",
+    "initial_naming": true,
+    "old_title": "TileKit 手机开始按钮修复",
+    "context": [
+      {
+        "user": "请修复虚构 TileKit 拼图工具的开始按钮在手机上点不动的问题。",
+        "assistant": "已修复 TileKit 手机开始按钮的触摸事件处理。"
+      }
+    ],
+    "expect_rename": false
+  },
+  {
+    "case": "first_turn_accurate_english_title",
+    "initial_naming": true,
+    "old_title": "TileKit mobile start button fix",
+    "context": [
+      {
+        "user": "请修复虚构 TileKit 拼图工具的开始按钮在手机上点不动的问题。",
+        "assistant": "已修复 TileKit 手机开始按钮的触摸事件处理。"
       }
     ],
     "expect_rename": false

@@ -3,11 +3,11 @@
 **让 Codex 的标题跟上对话，回头找聊天更方便**。<br>
 **Keep Codex titles relevant as your conversation evolves, so chats are easier to find**.
 
-第一轮只是开场，后面才聊到正题，侧栏标题却还停在开头。Codex Title Updater 在第一轮结束后先生成一个简洁中文标题，保留项目名和技术词；后续在主要话题变化、原标题已不准确时继续更新。<br>
-The first exchange is often just a starting point. When the real task takes shape later, the sidebar title can lag behind. Codex Title Updater generates a concise Chinese title after the first turn, preserving project names and technical terms, then updates it when the main topic changes and the old title becomes inaccurate.
+Codex 已有自动命名，但标题有时只留下会话链接或含糊的开场白，后来聊到正题也未能准确概括内容。Codex Title Updater 在自带标题基础上补充检查：原标题合适就保留，明显失准时再纠偏。更新后的标题使用简洁中文，保留项目名和技术词。<br>
+Codex already generates titles, but a title may capture a conversation link or vague opening instead of the actual task. Codex Title Updater supplements the built-in title: keep it when accurate, correct it when clearly misleading. Updated titles use concise Chinese while preserving project names and technical terms.
 
-它通过 Codex 的 `Stop` Hook 在一轮结束时触发。首轮主动命名，无需先发生话题变化；后续标题仍然准确时保持不变，继续排错、测试或润色也不会仅因此换名。<br>
-It runs through Codex's `Stop` hook at the end of a turn. The first turn gets an initial title without requiring a topic change. Later, accurate titles stay put, and routine debugging, testing or editing does not by itself trigger a rename.
+它通过 Codex 的 `Stop` Hook 在一轮结束时触发。首轮也先检查标题是否准确，不为换措辞而重新命名；尚未成功自动校正时，无需先发生话题变化，就可以补正失准的初始标题。<br>
+It runs through Codex's `Stop` hook at the end of a turn. Even the first check preserves accurate titles rather than rewording them. Until the first successful automatic correction, a misleading initial title can be fixed without a topic change.
 
 ## 复制提示词，让 Codex 安装 / Install with a prompt
 
@@ -33,16 +33,16 @@ Check registration, enablement and trust, then verify that a title check runs in
 Guide me through any manual trust review, and explain how to disable and re-enable it.
 ```
 
-**安装后需在 `/hooks` 中审核并信任，才会运行**。 完成启用后，在新对话中完成一轮即可检查初次命名；若生成的标题与原标题完全相同，结果会是“保留”。<br>
-**Review and trust the hook in `/hooks` before it can run**. Once enabled, complete one turn in a new conversation to check initial naming. If the generated title is identical to the existing one, the result is a successful keep.
+**安装后需在 `/hooks` 中审核并信任，才会运行**。 完成启用后，在新对话中完成一轮即可验证首轮检查；原标题准确时，“保留”就是正确结果。<br>
+**Review and trust the hook in `/hooks` before it can run**. Once enabled, complete one turn in a new conversation to verify the first check. Keeping an accurate title is a successful result.
 
 标题判断会调用你在 Codex 中配置的模型服务，消耗额度或产生 API 费用，也可能增加轮末等待时间。<br>
 Title reviews use your configured Codex model provider, consume quota or incur API charges, and may add a wait at the end of a turn.
 
 ## 标题什么时候会改 / When titles change
 
-- **第一轮先命名**。 首轮结束后，根据实际需求和回答主动生成标题，不要求话题已变化。后续检查点为第 2、6、8、10…轮；每次成功改名都需冷却至少 4 轮。第一轮成功改名时，第 2 轮跳过，最早第 6 轮再检查。<br>
-  **Name after the first turn**. Generate an initial title from the request and answer without requiring a topic change. Later checks are scheduled for turns 2, 6, 8, 10, …, subject to a 4-turn cooldown after every successful rename. A turn-1 rename skips turn 2; the next check is at turn 6.
+- **第一轮先检查**。 首轮结束后，结合需求和回答检查现有标题，准确就保留，明显失准才校正。后续检查点为第 2、6、8、10…轮；每次成功改名都需冷却至少 4 轮。首轮保留不触发冷却，第 2 轮仍会检查；首轮成功改名则最早第 6 轮再检查。<br>
+  **Check after the first turn**. Review the existing title against the request and answer; keep it when accurate and correct it only when clearly misleading. Later checks are scheduled for turns 2, 6, 8, 10, …, subject to a 4-turn cooldown after each successful rename. Keeping the title at turn 1 allows a turn-2 check; a turn-1 rename delays the next check until turn 6.
 - **补正失准的初始标题**。 尚未成功自动命名时，后续检查可以修正以会话链接、无意义开场白等充当标题的情况，不要求先换题；原标题准确就保持。成功命名后，再次更新仍要求主要话题有实质变化且原标题已失准，简单追问和换措辞不触发改名。<br>
   **Correct inaccurate initial titles**. Before the first successful automatic rename, later checks may replace a misleading initial title, such as a conversation link or meaningless opening fragment, without requiring a topic change. Accurate titles stay. After successful naming, further updates still require a substantial topic change and an inaccurate title; follow-ups and stylistic rewording do not qualify.
 - **每个对话单独记数**。 仅统计完成的真实用户主会话轮次，工具调用、子代理和自动续跑不计入；重启后继续，同一轮不重复处理。<br>
@@ -54,7 +54,7 @@ Title reviews use your configured Codex model provider, consume quota or incur A
 
 | 想做什么 / Goal | 中文提示词 / Chinese prompt | English prompt |
 | --- | --- | --- |
-| 更新 / Update | 更新已安装的 Codex Title Updater，保留设置、状态和其他 Hook，并验证第一轮命名。 | Update the installed Codex Title Updater, preserving settings, state and other hooks, and verify first-turn naming. |
+| 更新 / Update | 更新已安装的 Codex Title Updater，保留设置、状态和其他 Hook，并验证首轮检查：准确标题保留，失准标题校正。 | Update the installed Codex Title Updater, preserving settings, state and other hooks, and verify that the first check keeps accurate titles and corrects misleading ones. |
 | 检查 / Check | 检查 Codex Title Updater 是否就绪，告诉我最近一次为什么保留或修改标题。 | Check whether Codex Title Updater is ready and explain its latest title decision. |
 | 固定 / Lock | 用 Codex Title Updater 锁定当前对话标题。 | Lock this chat's title with Codex Title Updater. |
 | 停用 / Pause | 停用 Codex Title Updater，保留设置和会话状态。 | Disable Codex Title Updater and keep its settings and state. |

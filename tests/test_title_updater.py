@@ -85,15 +85,28 @@ class HookTests(unittest.TestCase):
     def test_schedule_exactly_1_2_6_8_10(self):
         self.assertEqual([i for i in range(1, 15) if ar.scheduled(i)], [1, 2, 6, 8, 10, 12, 14])
 
-    def test_first_turn_names_without_requiring_topic_change(self):
+    def test_first_turn_corrects_inaccurate_title_without_requiring_topic_change(self):
         def review(old, context, config):
             self.assertTrue(config["initial_naming"])
             self.assertEqual(len(context), 1)
-            return YES | {"topic_changed": False, "old_title_inaccurate": False}
+            return YES | {"topic_changed": False}
         ar.process(self.payload(1), self.cfg, self.backend, review)
         self.assertEqual(len(self.backend.writes), 1)
         self.assertEqual(self.state()["last_rename_round"], 1)
         self.assertNotIn("initial_naming", self.cfg)
+
+    def test_first_turn_does_not_replace_accurate_native_title(self):
+        self.run_hook(1, YES | {"topic_changed": False, "old_title_inaccurate": False})
+        self.assertEqual(self.backend.writes, [])
+        self.assertNotIn("last_rename_round", self.state())
+
+    def test_first_turn_keep_leaves_second_turn_check_without_cooldown(self):
+        keep = YES | {"topic_changed": False, "old_title_inaccurate": False}
+        self.run_hook(1, keep)
+        self.run_hook(2, keep)
+        self.assertEqual([x[0] for x in self.reviews], [1, 2])
+        self.assertEqual(self.backend.writes, [])
+        self.assertNotIn("cooldown", [e["event"] for e in self.events()])
 
     def test_first_turn_success_cools_down_second_turn(self):
         self.run_hook(1)
@@ -150,7 +163,7 @@ class HookTests(unittest.TestCase):
     def test_first_turn_uses_human_count_not_raw_turn_number(self):
         def review(old, context, config):
             self.assertTrue(config["initial_naming"])
-            return YES | {"topic_changed": False, "old_title_inaccurate": False}
+            return YES | {"topic_changed": False}
         ar.process(self.payload(2, triggers={1: "automation"}), self.cfg, self.backend, review)
         self.assertEqual(self.state()["last_rename_round"], 1)
 
@@ -164,7 +177,9 @@ class HookTests(unittest.TestCase):
     def test_initial_prompt_does_not_require_changed_topic(self):
         initial = ar.review_prompt("原标题", [{"user": "测试需求"}], initial_naming=True)
         regular = ar.review_prompt("原标题", [{"user": "测试需求"}])
-        self.assertIn("初次命名不要求话题变化或原标题失准", initial)
+        self.assertIn("不要求话题变化", initial)
+        self.assertIn("原标题准确时必须保持", initial)
+        self.assertIn("old_title_inaccurate=true", initial)
         self.assertNotIn("只有主要话题/具体对象", initial)
         self.assertIn("只有主要话题/具体对象", regular)
 
@@ -383,9 +398,9 @@ class HookTests(unittest.TestCase):
 
     def test_initial_naming_keeps_title_and_confidence_validation(self):
         cfg = self.cfg | {"initial_naming": True}
-        same_topic = YES | {"topic_changed": False, "old_title_inaccurate": False}
+        same_topic = YES | {"topic_changed": False}
         self.assertEqual(ar.valid_proposal(same_topic, self.backend.value, cfg), YES["title"])
-        for override in [{"confidence": .5}, {"rename": "true"}, {"rename": False},
+        for override in [{"old_title_inaccurate": False}, {"confidence": .5}, {"rename": "true"}, {"rename": False},
                          {"title": "English only"}, {"title": "中文\n标题"}, {"title": self.backend.value}]:
             self.assertIsNone(ar.valid_proposal(same_topic | override, self.backend.value, cfg), override)
 
