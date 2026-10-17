@@ -6,6 +6,36 @@ Keep titles in sync with the conversation—update only when it matters.
 一个保守的 Codex `Stop` Hook：主要话题变化、原标题已不准确时，自动更新为简洁中文标题，保留必要的项目名和技术词。<br>
 A conservative Codex `Stop` hook that updates an outdated title only after a meaningful topic change. Titles are concise Chinese, preserving project names and technical terms.
 
+## 让 Codex 帮你安装 / Install with Codex
+
+把下面这段话复制到 Codex 对话中，让它帮你检查环境并完成安装：
+
+```text
+请帮我安装 https://github.com/ye-kaifan/codex-title-updater。
+先检查环境是否兼容，保留已有的 Codex 配置。
+安装后验证是否就绪，并引导我完成必要的启用步骤。
+```
+
+Copy this prompt into a Codex conversation to have it check your environment and install the hook:
+
+```text
+Please install https://github.com/ye-kaifan/codex-title-updater for me.
+Check compatibility first and preserve my existing Codex configuration.
+Verify the installation and guide me through any remaining activation steps.
+```
+
+安装后可能需要你在 Codex 的 `/hooks` 中审核并信任该 Hook；按引导完成即可。标题检查会使用你配置的模型服务，消耗相应额度或产生 API 费用。<br>
+You may need to review and trust the hook in Codex's `/hooks` menu after installation. Title checks use your configured model provider and consume quota or incur API charges.
+
+## 日常使用也可以直接说 / Everyday prompts
+
+| 中文提示词 | English prompt |
+| --- | --- |
+| 请检查 Codex Title Updater 是否已安装、启用并受信任，查看最近一次标题检查结果。 | Check whether Codex Title Updater is installed, enabled and trusted, and show the latest title check result. |
+| 请停用 Codex Title Updater，保留设置和会话状态。 | Disable Codex Title Updater, keeping its settings and conversation state. |
+| 请重新启用 Codex Title Updater，并检查是否还需要完成启用步骤。 | Re-enable Codex Title Updater and check for any remaining activation steps. |
+| 请卸载 Codex Title Updater，保留会话状态和备份，不影响其他 Hook。 | Uninstall Codex Title Updater, keeping conversation state and backups and preserving other hooks. |
+
 ## 规则 / Behavior
 
 | 中文 | English |
@@ -14,10 +44,13 @@ A conservative Codex `Stop` hook that updates an outdated title only after a mea
 | 每次成功更新后，至少间隔 4 轮；保持原标题不重置间隔。 | Wait at least 4 turns after each successful update. Keeping a title does not reset the interval. |
 | 同一任务的继续实现、排错、测试、润色和短暂插问不触发换标题。 | Follow-ups, debugging, testing, polishing and brief asides keep the current title. |
 | 仅统计完成的真实用户主会话轮次；工具调用、子代理和自动续跑不计入。 | Count completed human turns in the main conversation; exclude tools, subagents and automatic continuations. |
-| 各会话独立持久化；去重、进程锁和写入日志防止重复更新。 | Persist state per conversation, with deduplication, locking and a write journal. |
+| 各会话独立计数，重启后继续；同一轮不会重复处理。 | Count each conversation separately, retain state across restarts and process each turn only once. |
 | 首次自动接管已有标题；此后检测到外部标题变化便锁定，直到手动解锁。 | Adopt existing titles on first observation; later external title changes lock the conversation until explicitly unlocked. |
 
-## 安装与启用 / Install & enable
+<details>
+<summary>手动安装、命令行操作与技术说明 / Manual installation, CLI controls & technical details</summary>
+
+## 手动安装与启用 / Manual install & enable
 
 需要 **Python 3.11+**，无第三方 Python 依赖；Codex 须已登录，并支持原生 Hooks 与 App Server。macOS 已验证，内核版本为 `0.163.0-alpha.10.2`；Linux 尚未验证完整生命周期，Windows 暂不支持。<br>
 Requires **Python 3.11+**, no third-party Python packages, and a signed-in Codex with native Hooks and App Server. Verified on macOS with core `0.163.0-alpha.10.2`; full lifecycle on Linux is unverified. Windows is not supported yet.
@@ -83,5 +116,7 @@ Use `CODEX_TITLE_UPDATER_PYTHON` to choose Python, `CODEX_TITLE_UPDATER_CLI` to 
   Uses official [App Server](https://learn.chatgpt.com/docs/app-server) `thread/read` and `thread/name/set`, with read-back verification; no direct database/transcript writes. Sidebar refresh depends on the client. Title provenance and atomic compare-and-set are unavailable, leaving a small concurrent-edit race.
 - 轮次计数依赖本地 transcript 的 `composer` 来源标记；格式未知时跳过。模型判断并非准确率保证；异常时保持标题，不触发原对话续跑。升级 Codex 后请重新验证。<br>
   Counting depends on local transcript `composer` attribution; unknown formats are skipped. Model judgments are not an accuracy guarantee. Errors preserve the title without continuing the original conversation. Recheck after Codex upgrades.
+
+</details>
 
 [MIT License](LICENSE) · 独立社区项目，与 OpenAI 无隶属关系。 / Independent community project; not affiliated with OpenAI.
