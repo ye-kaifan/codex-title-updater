@@ -3,8 +3,8 @@
 **让 Codex 的标题跟上对话，回头找聊天更方便**。<br>
 **Keep Codex titles relevant as your conversation evolves, so chats are easier to find**.
 
-Codex 已有自动命名，但标题有时只留下会话链接或含糊的开场白，后来聊到正题也未能准确概括内容。Codex Title Updater 在自带标题基础上补充检查：原标题合适就保留，明显失准时再纠偏。更新后的标题使用简洁中文，保留项目名和技术词。<br>
-Codex already generates titles, but a title may capture a conversation link or vague opening instead of the actual task. Codex Title Updater supplements the built-in title: keep it when accurate, correct it when clearly misleading. Updated titles use concise Chinese while preserving project names and technical terms.
+Codex 已有自动命名，但标题有时只留下会话链接或含糊的开场白，后来聊到正题也未能准确概括内容。Codex Title Updater 在自带标题基础上补充检查：原标题合适就保留，首轮明显失准时纠偏，后续主要话题变了再按需更新。更新后的标题使用简洁中文，保留项目名和技术词。<br>
+Codex already generates titles, but a title may capture a conversation link or vague opening instead of the actual task. Codex Title Updater supplements built-in naming: keep accurate titles, correct misleading ones after the first turn, and update them when the main topic changes later. Updated titles use concise Chinese while preserving project names and technical terms.
 
 它通过 Codex 的 `Stop` Hook 在一轮结束时触发。首轮也先检查标题是否准确，不为换措辞而重新命名；尚未成功自动校正时，无需先发生话题变化，就可以补正失准的初始标题。<br>
 It runs through Codex's `Stop` hook at the end of a turn. Even the first check preserves accurate titles rather than rewording them. Until the first successful automatic correction, a misleading initial title can be fixed without a topic change.
@@ -49,6 +49,25 @@ Title reviews use your configured Codex model provider, consume quota or incur A
   **Track each chat separately**. Count completed human turns in the main conversation, excluding tool calls, subagents and automatic continuations. State survives restarts; duplicate events are ignored.
 - **可以固定标题**。 默认首次接管已有标题，此后检测到外部改名便暂停该对话的自动更新；首次遇到的手动标题无法自动识别，保护方法见下方技术说明。<br>
   **You can keep a title fixed**. Existing titles are adopted on first observation; a later external rename pauses updates for that chat. Pre-existing manual titles cannot be identified automatically; see the protection options below.
+
+## 运行开销 / Runtime cost
+
+2026 年 10 月 17 日，用四个短对话样例实测了首轮纠偏、保留准确标题和后续换题检查：<br>
+Four short synthetic cases tested first-turn correction, keeping an accurate title, and a later topic change on October 17, 2026:
+
+| 标题检查配置 / Review configuration | 样例数 / Cases | 单次总 tokens / Total tokens per check |
+| --- | ---: | ---: |
+| GPT-6.1-Sol + xhigh | 3 | 17,366–17,494 |
+| GPT-6-Astra + low（测试者当前 Hook 配置 / tester's current hook configuration） | 1 | 17,196 |
+
+数据来自 CLI 返回的实际用量；总量为输入加输出，包含 CLI 构建的完整请求上下文。四次均以输入为主（17,112–17,208 tokens），输出为 84–320 tokens，返回的缓存输入均为 0。这是短样例的单次检查开销，不含开发或测试聊天本身的用量；实际消耗会随配置、对话长度及服务端缓存情况变化。<br>
+These are CLI-reported usage figures: input plus output, including the full request context assembled by the CLI. Input dominated each call (17,112–17,208 tokens); output was 84–320 tokens, with zero cached input reported. These figures cover individual short-case reviews, excluding development or test-chat usage. Actual consumption varies with configuration, conversation length, and provider caching.
+
+**跳过检查时，不产生标题判断的模型消耗；检查后决定保留标题，仍会消耗 tokens**。例如，未到检查轮次、处于冷却期或标题已锁定时，都不会发出标题判断请求。<br>
+**Skipped checks make no title-review model request; a completed check still consumes tokens even if the title stays unchanged**. Unscheduled turns, cooldowns, and locked titles skip the request.
+
+Hook 默认使用 Codex 配置中的默认模型，并单独设置 `low` 推理档位；主聊天选择 `xhigh` 不会让 Hook 自动跟着使用 `xhigh`。上表中的 Astra 是测试者的本机默认模型，并非项目固定指定的模型。测试通过自定义服务商运行，模型名称和档位按 CLI 生效配置记录。<br>
+By default, the hook uses the default model in your Codex configuration and sets its own reasoning effort to `low`; choosing `xhigh` in the main chat does not change the hook's effort. Astra above was the tester's local default, not a model hardcoded by this project. Tests used a custom provider; model names and effort levels reflect the effective CLI configuration.
 
 ## 日常操作，直接告诉 Codex / Everyday prompts
 
