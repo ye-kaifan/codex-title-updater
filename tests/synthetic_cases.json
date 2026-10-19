@@ -95,7 +95,7 @@
   {
     "case": "initial_accurate_title_with_link",
     "initial_correction": true,
-    "old_title": "TileKit 使用说明 codex://threads/example-origin",
+    "old_title": "TileKit 使用说明 codex://threads/x",
     "context": [
       {
         "user": "请为虚构的 TileKit 拼图工具写一份使用说明。",
@@ -131,5 +131,39 @@
       }
     ],
     "expect_rename": false
+  },
+  {
+    "case": "overlong_accurate_first_title",
+    "initial_naming": true,
+    "old_title": "请把虚构拼图工具中已经修改的按钮和最初发布的版本之间的所有差别都整理出来，包括具体改了哪些文字以及操作步骤…",
+    "context": [
+      {
+        "user": "请整理虚构 TileKit 拼图工具的版本差异，列出按钮文字和操作步骤的变化。",
+        "assistant": "已列出 TileKit 按钮文字及操作步骤的改动，完成两个版本的比较。"
+      }
+    ],
+    "expect_rename": true
+  },
+  {
+    "case": "overlong_same_topic_after_auto_naming",
+    "old_title": "TileKit 拼图工具在手机上开始按钮的触摸事件修复、验证及使用说明更新情况的详细整理",
+    "context": [
+      {
+        "user": "继续测试 TileKit 手机开始按钮的触摸操作。",
+        "assistant": "开始按钮触摸操作测试通过，使用说明已更新。"
+      }
+    ],
+    "expect_rename": true
+  },
+  {
+    "case": "overlong_english_title",
+    "old_title": "TileKit mobile start button touch handling repair and verification",
+    "context": [
+      {
+        "user": "修复虚构 TileKit 的手机开始按钮。",
+        "assistant": "手机开始按钮已修复并验证。"
+      }
+    ],
+    "expect_rename": true
   }
 ]

@@ -5,11 +5,11 @@
 **让 Codex 的标题跟上对话，回头找聊天更方便**。<br>
 **Keep Codex titles relevant as your conversation evolves, so chats are easier to find**.
 
-Codex 已有自动命名，但标题有时只留下会话链接或含糊的开场白，后来聊到正题也未能准确概括内容。Codex Title Updater 在自带标题基础上补充检查：原标题合适就保留，首轮明显失准时纠偏，后续主要话题变了再按需更新。更新后的标题使用简洁中文，保留项目名和技术词。<br>
-Codex already generates titles, but a title may capture a conversation link or vague opening instead of the actual task. Codex Title Updater supplements built-in naming: keep accurate titles, correct misleading ones after the first turn, and update them when the main topic changes later. Updated titles use concise Chinese while preserving project names and technical terms.
+Codex 已有自动命名，但标题有时只留下会话链接或含糊的开场白，后来聊到正题也未能准确概括内容。Codex Title Updater 在自带标题基础上补充检查：原标题准确且长度合规就保留；超长标题由程序强制进入纠正流程，首轮明显失准时纠偏，后续主要话题变了再按需更新。更新后的标题使用简洁中文，保留项目名和技术词。<br>
+Codex already generates titles, but a title may capture a conversation link or vague opening instead of the actual task. Codex Title Updater supplements built-in naming: keep accurate titles within the length limit, require repair of overlong titles, correct misleading initial titles, and update them when the main topic changes later. Updated titles use concise Chinese while preserving project names and technical terms.
 
-它通过 Codex 的 `Stop` Hook 在一轮结束时触发。首轮也先检查标题是否准确，不为换措辞而重新命名；尚未成功自动校正时，无需先发生话题变化，就可以补正失准的初始标题。<br>
-It runs through Codex's `Stop` hook at the end of a turn. Even the first check preserves accurate titles rather than rewording them. Until the first successful automatic correction, a misleading initial title can be fixed without a topic change.
+它通过 Codex 的 `Stop` Hook 在一轮结束时触发。首轮也先检查标题是否准确、长度是否合规，不为换措辞而重新命名；尚未成功自动校正时，无需先发生话题变化，就可以补正失准的初始标题。<br>
+It runs through Codex's `Stop` hook at the end of a turn. Even the first check preserves accurate titles within the length limit rather than rewording them. Until the first successful automatic correction, a misleading initial title can be fixed without a topic change.
 
 ## 选择安装或自行创建 / Install or build your own
 
@@ -40,8 +40,8 @@ Check registration, enablement and trust, then verify that a title check runs in
 Guide me through any manual trust review, and explain how to disable and re-enable it.
 ```
 
-**安装后需在 `/hooks` 中审核并信任，才会运行**。 完成启用后，在新对话中完成一轮即可验证首轮检查；原标题准确时，“保留”就是正确结果。<br>
-**Review and trust the hook in `/hooks` before it can run**. Once enabled, complete one turn in a new conversation to verify the first check. Keeping an accurate title is a successful result.
+**安装后需在 `/hooks` 中审核并信任，才会运行**。 完成启用后，在新对话中完成一轮即可验证首轮检查；原标题准确且长度合规时，“保留”就是正确结果。<br>
+**Review and trust the hook in `/hooks` before it can run**. Once enabled, complete one turn in a new conversation to verify the first check. Keeping an accurate title within the length limit is a successful result.
 
 标题判断会调用你在 Codex 中配置的模型服务，消耗额度或产生 API 费用，也可能增加轮末等待时间。<br>
 Title reviews use your configured Codex model provider, consume quota or incur API charges, and may add a wait at the end of a turn.
@@ -55,10 +55,11 @@ Use the following requirements to create an independent hook. Adjust the review 
 请从头创建一个标题检查和更新 Hook，补充 Codex 自带的自动命名，方便查找历史会话。
 
 规则：
-- 第 1 轮对话完成后，结合实际需求和回答检查已有标题；准确就保留，明显失准才纠正，不要求话题已变化。
+- 第 1 轮对话完成后，结合实际需求和回答检查已有标题；准确且长度合规就保留，明显失准时纠正，不要求话题已变化。
 - 如果错过首轮且尚未成功自动校正过标题，后续检查仍允许纠正失准的初始标题。
 - 第 2 轮检查；从第 6 轮起，每 2 轮检查一次。每次成功改名后，至少间隔 4 轮再检查。因此首轮改名成功时跳过第 2 轮，下次在第 6 轮检查。
-- 成功校正初始标题后，只有主要话题发生变化、原标题已不准确时才再次修改，不为换措辞而改名。
+- 成功校正初始标题后，对长度合规的标题，只有主要话题发生变化、原标题已不准确时才再次修改，不为换措辞而改名。
+- 超过字符上限的标题必须纠正，不因含义准确而保留，也不受换题、检查轮次或冷却期限制；仍尊重手动锁定。生成失败时记录待纠正，下一个真人轮次重试，不能截断凑数。
 - 标题使用简洁中文，突出具体对象和核心任务，保留必要的项目名与技术词。
 - 只统计真实用户主会话轮次，工具调用、子代理和自动续跑不计入；各会话独立计数，重启后保留状态。
 - 尊重用户手动设置的标题；如果接口无法区分已有标题是手写还是自动生成，请说明处理方案。避免重复触发和循环改名。
@@ -72,10 +73,11 @@ Use the following requirements to create an independent hook. Adjust the review 
 Build a title-review and update hook from scratch to supplement Codex's built-in naming and make past chats easier to find.
 
 Rules:
-- After the first completed turn, review the existing title against the actual request and answer. Keep accurate titles and correct clearly misleading ones; a topic change is not required.
+- After the first completed turn, review the existing title against the actual request and answer. Keep accurate titles within the length limit and correct clearly misleading ones; a topic change is not required.
 - If the first check was missed and no automatic correction has succeeded yet, later checks may still correct an inaccurate initial title.
 - Check at turn 2, then every two turns from turn 6 onward. After each successful rename, wait at least four turns before checking again. A turn-1 rename therefore skips turn 2 and checks again at turn 6.
-- After the initial title has been corrected, rename only when the main topic has substantially changed and the old title is inaccurate. Do not rename merely to rephrase it.
+- After the initial title has been corrected, rename a title within the length limit only when the main topic has substantially changed and the old title is inaccurate. Do not rename merely to rephrase it.
+- Repair titles exceeding the character limit regardless of semantic accuracy, topic changes, schedule or cooldown; continue respecting manual locks. If generation fails, record a deferred repair and retry on the next human turn instead of truncating the title.
 - Use concise Chinese titles that identify the specific subject and core task, preserving relevant project names and technical terms.
 - Count only real human turns in the main conversation, excluding tool calls, subagents, and automatic continuations. Track each chat independently and preserve state across restarts.
 - Respect manually set titles. If the interface cannot distinguish existing manual titles from generated ones, explain how they will be handled. Prevent duplicate processing and recursive renaming.
@@ -90,10 +92,14 @@ The behavior, measured costs, and controls below describe this repository's impl
 
 ## 标题什么时候会改 / When titles change
 
-- **第一轮先检查**。 首轮结束后，结合需求和回答检查现有标题，准确就保留，明显失准才校正。后续检查点为第 2、6、8、10…轮；每次成功改名都需冷却至少 4 轮。首轮保留不触发冷却，第 2 轮仍会检查；首轮成功改名则最早第 6 轮再检查。<br>
-  **Check after the first turn**. Review the existing title against the request and answer; keep it when accurate and correct it only when clearly misleading. Later checks are scheduled for turns 2, 6, 8, 10, …, subject to a 4-turn cooldown after each successful rename. Keeping the title at turn 1 allows a turn-2 check; a turn-1 rename delays the next check until turn 6.
-- **补正失准的初始标题**。 尚未成功自动命名时，后续检查可以修正以会话链接、无意义开场白等充当标题的情况，不要求先换题；原标题准确就保持。成功命名后，再次更新仍要求主要话题有实质变化且原标题已失准，简单追问和换措辞不触发改名。<br>
-  **Correct inaccurate initial titles**. Before the first successful automatic rename, later checks may replace a misleading initial title, such as a conversation link or meaningless opening fragment, without requiring a topic change. Accurate titles stay. After successful naming, further updates still require a substantial topic change and an inaccurate title; follow-ups and stylistic rewording do not qualify.
+- **第一轮先检查**。 首轮结束后，结合需求和回答检查现有标题，准确且长度合规就保留，明显失准时校正。常规检查点为第 2、6、8、10…轮；每次成功改名都需冷却至少 4 轮。首轮保留不触发冷却，第 2 轮仍会检查；首轮成功改名则最早第 6 轮再检查。<br>
+  **Check after the first turn**. Review the existing title against the request and answer; keep it when accurate and within the length limit, and correct it when clearly misleading. Regular checks are scheduled for turns 2, 6, 8, 10, …, subject to a 4-turn cooldown after each successful rename. Keeping the title at turn 1 allows a turn-2 check; a turn-1 rename delays the next check until turn 6.
+- **补正失准的初始标题**。 尚未成功自动命名时，后续检查可以修正以会话链接、无意义开场白等充当标题的情况，不要求先换题；原标题准确且长度合规就保持。成功命名后，长度合规标题的再次更新仍要求主要话题有实质变化且原标题已失准，简单追问和换措辞不触发改名。<br>
+  **Correct inaccurate initial titles**. Before the first successful automatic rename, later checks may replace a misleading initial title, such as a conversation link or meaningless opening fragment, without requiring a topic change. Accurate titles within the length limit stay. After successful naming, updates to compliant titles still require a substantial topic change and an inaccurate title; follow-ups and stylistic rewording do not qualify.
+- **超长标题必须纠正**。 `max_title_chars` 默认是 40，按 Python `len` 统计 Unicode 字符，包含空格、标点和英文字符。它同时约束旧标题和新标题；40 字符可保留，41 字符就进入独立纠正流程，即使含义准确、话题没变、未到常规检查点或仍在冷却期。模型只生成短标题，不再投票决定是否保留；人工锁定、外部改名保护及停用开关仍优先。<br>
+  **Repair overlong titles**. `max_title_chars` defaults to 40 Unicode characters counted by Python `len`, including spaces, punctuation and Latin letters. It applies to both existing and replacement titles: 40 characters may stay; 41 triggers a separate repair even when accurate, on the same topic, outside the schedule or during cooldown. The model generates a replacement instead of deciding whether to keep the old title. Manual locks, external-edit protection and disablement still take precedence.
+- **失败不冒充保留成功**。 超长纠正遇到超时、低置信度或非法结果，记录 `repair_deferred` 和原因，不会记录为 `keep`，也不会直接截断。每个真人轮次至多调用模型一次，同一事件不重复处理；下一个真人轮次仍超长时继续纠正。成功后恢复常规检查与冷却。<br>
+  **Distinguish failure from keeping a valid title**. Timeouts, low confidence or invalid repair results log `repair_deferred` with a cause, never `keep`, and never trigger blind truncation. At most one model call is made per human turn; duplicate events are ignored. The next human turn retries if the title is still overlong. Successful repair restores normal scheduling and cooldown.
 - **每个对话单独记数**。 仅统计完成的真实用户主会话轮次，工具调用、子代理和自动续跑不计入；重启后继续，同一轮不重复处理。<br>
   **Track each chat separately**. Count completed human turns in the main conversation, excluding tool calls, subagents and automatic continuations. State survives restarts; duplicate events are ignored.
 - **可以固定标题**。 默认首次接管已有标题，此后检测到外部改名便暂停该对话的自动更新；首次遇到的手动标题无法自动识别，保护方法见下方技术说明。<br>
@@ -112,8 +118,8 @@ Four short synthetic cases tested first-turn correction, keeping an accurate tit
 数据来自 CLI 返回的实际用量；总量为输入加输出，包含 CLI 构建的完整请求上下文。四次均以输入为主（17,112–17,208 tokens），输出为 84–320 tokens，返回的缓存输入均为 0。这是短样例的单次检查开销，不含开发或测试聊天本身的用量；实际消耗会随配置、对话长度及服务端缓存情况变化。<br>
 These are CLI-reported usage figures: input plus output, including the full request context assembled by the CLI. Input dominated each call (17,112–17,208 tokens); output was 84–320 tokens, with zero cached input reported. These figures cover individual short-case reviews, excluding development or test-chat usage. Actual consumption varies with configuration, conversation length, and provider caching.
 
-**跳过检查时，不产生标题判断的模型消耗；检查后决定保留标题，仍会消耗 tokens**。例如，未到检查轮次、处于冷却期或标题已锁定时，都不会发出标题判断请求。<br>
-**Skipped checks make no title-review model request; a completed check still consumes tokens even if the title stays unchanged**. Unscheduled turns, cooldowns, and locked titles skip the request.
+**跳过检查时，不产生标题判断的模型消耗；检查后决定保留标题，仍会消耗 tokens**。例如，标题长度合规且未到检查轮次或处于冷却期，或者标题已锁定时，都不会发出标题判断请求。<br>
+**Skipped checks make no title-review model request; a completed check still consumes tokens even if the title stays unchanged**. Unscheduled turns and cooldowns skip reviews of length-compliant titles; locked titles always skip the request.
 
 Hook 默认使用 Codex 配置中的默认模型，并单独设置 `low` 推理档位；主聊天选择 `xhigh` 不会让 Hook 自动跟着使用 `xhigh`。上表中的 Astra 是测试者的本机默认模型，并非项目固定指定的模型。测试通过自定义服务商运行，模型名称和档位按 CLI 生效配置记录。<br>
 By default, the hook uses the default model in your Codex configuration and sets its own reasoning effort to `low`; choosing `xhigh` in the main chat does not change the hook's effort. Astra above was the tester's local default, not a model hardcoded by this project. Tests used a custom provider; model names and effort levels reflect the effective CLI configuration.
@@ -206,8 +212,22 @@ Reproduce CI's native checks with `python -X utf8 run_native_checks.py --work-di
 `doctor` 中对应 Hook 应唯一、启用且 `trustStatus: trusted`。测试对话完成第 1 轮后，日志应出现带 `initial_naming: true` 的 `check`，随后为 `keep` 或 `renamed`。第一轮成功改名后，第 2 轮为 `cooldown`，第 6 轮再检查；第 4 轮不检查。成功更新后的冷却轮次记录为 `cooldown`。手动改标题后再完成一轮，应出现 `manual_lock`。<br>
 In `doctor`, the hook should appear once, enabled, with `trustStatus: trusted`. After turn 1 in a test conversation, expect `check` with `initial_naming: true`, followed by `keep` or `renamed`. A successful turn-1 rename logs `cooldown` at turn 2 and checks again at turn 6; no check at turn 4. A cooling-down turn logs `cooldown`. Manually editing a title, then completing another turn, should log `manual_lock`.
 
+超长标题检查还应有 `length_repair: true`、`title_chars` 和 `max_title_chars`。成功时为 `renamed`，生成失败时为 `repair_deferred`（`cause` 区分模型错误、置信度或标题校验失败）；普通改名建议未通过校验时为 `proposal_rejected`。`keep` 只表示长度合规标题的规则判定保留。<br>
+Length checks also log `length_repair: true`, `title_chars` and `max_title_chars`. Success logs `renamed`; failed generation logs `repair_deferred`, with `cause` distinguishing model errors, confidence and title validation. Invalid regular rename proposals log `proposal_rejected`. `keep` means a policy decision to retain a length-compliant title.
+
+升级后，旧版已经 `keep` 的超长标题会在下一个真人轮次结束时纠正。也可以对已停止且最后一轮已完成的聊天运行以下命令立即补正；只处理超长标题，沿用原轮次，不清除人工锁定，也不触发新对话轮次。重复执行时，已经合规的标题不会再次调用模型。<br>
+After upgrading, an overlong title previously kept by an older version is repaired after the next human turn. To repair it immediately, use the following command on a stopped chat whose last turn completed. It only repairs overlong titles, preserves the original turn count and manual locks, and starts no conversation turn. Repeating it does not call the model once the title complies.
+
+```bash
+python3 ~/.codex/hooks/codex-title-updater/title_updater.py repair THREAD_ID
+```
+
+Windows 使用 `python -X utf8 "$env:USERPROFILE\.codex\hooks\codex-title-updater\title_updater.py" repair THREAD_ID`；设置了 `CODEX_HOME` 或自定义安装目录时替换路径。执行后用 `inspect` 或审计日志确认是 `renamed`、`repair_deferred`，还是仍受锁定保护。<br>
+On Windows, use `python -X utf8 "$env:USERPROFILE\.codex\hooks\codex-title-updater\title_updater.py" repair THREAD_ID`; substitute a custom `CODEX_HOME` or installation path as needed. Inspect the state or audit log to confirm a rename, deferred repair, or preserved lock.
+
+
 如果首轮命名被跳过或旧版本保留了失准的原标题，后续检查会记录 `initial_correction: true`。这允许校正初始标题，但仍须确认原标题确实失准；成功更新后恢复通常的换题要求。<br>
-If first-turn naming was missed or an older version kept an inaccurate initial title, later checks log `initial_correction: true`. This permits correction only when the old title is inaccurate; normal topic-change requirements resume after a successful rename.
+If first-turn naming was missed or an older version kept an inaccurate initial title, later checks log `initial_correction: true`. This permits semantic correction when the old title is inaccurate; normal topic-change requirements resume after a successful rename. Length repair remains independent.
 
 ## 控制与配置 / Controls & settings
 
@@ -231,8 +251,8 @@ On Windows use `python -X utf8 manage.py disable`, `enable` or `uninstall`. Run 
 python -X utf8 "$env:USERPROFILE\.codex\hooks\codex-title-updater\title_updater.py" lock THREAD_ID
 ```
 
-设置文件为 `~/.codex/hooks/codex-title-updater/settings.json`：`model: null` 使用 Codex 默认配置的模型，检查时默认使用 `reasoning_effort: "low"`；`adopt_existing: false` 可保护首次遇到的已有标题。`unlock` 接管当前标题，但保留四轮间隔。需要固定标题时，先 `lock` 再修改。<br>
-Edit `~/.codex/hooks/codex-title-updater/settings.json`: `model: null` uses the default model in your Codex configuration, with `reasoning_effort: "low"` for reviews; `adopt_existing: false` protects titles already present on first observation. `unlock` adopts the current title without resetting the cooldown. For a fixed title, `lock` before editing.
+设置文件为 `~/.codex/hooks/codex-title-updater/settings.json`：`model: null` 使用 Codex 默认配置的模型，检查时默认使用 `reasoning_effort: "low"`；`adopt_existing: false` 可保护首次遇到的已有标题。`unlock` 接管当前标题，但保留常规检查的四轮间隔；超长纠正不受该间隔限制。需要固定标题时，先 `lock` 再修改。<br>
+Edit `~/.codex/hooks/codex-title-updater/settings.json`: `model: null` uses the default model in your Codex configuration, with `reasoning_effort: "low"` for reviews; `adopt_existing: false` protects titles already present on first observation. `unlock` adopts the current title without resetting the regular cooldown; length repair bypasses it. For a fixed title, `lock` before editing.
 
 `CODEX_TITLE_UPDATER_PYTHON` 可为 `.sh`/`.ps1` 入口指定完整 Python 路径；直接运行 `manage.py` 时使用当前 Python，安装器将其写入注册命令。`CODEX_TITLE_UPDATER_CLI` 可指定完整 Codex 可执行文件路径，不含外层引号或额外参数；`CODEX_TITLE_UPDATER_HOME` 可指定状态目录。后两项需在运行 Hook 的 Codex 进程环境中设置。<br>
 `CODEX_TITLE_UPDATER_PYTHON` selects a full Python path for `.sh`/`.ps1` wrappers; direct `manage.py` invocation registers the Python currently running it. `CODEX_TITLE_UPDATER_CLI` selects a full Codex executable path without surrounding quotes or extra arguments. `CODEX_TITLE_UPDATER_HOME` relocates state. The latter two must be set in the Codex process running the hook.

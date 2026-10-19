@@ -14,6 +14,8 @@ from manage import mutate_hooks
 
 YES = {"rename": True, "topic_changed": True, "old_title_inaccurate": True,
        "confidence": .98, "title": "ToyDB 集群作业排错", "reason": "主要工作已转为集群排错"}
+LONG_TITLE = "请把虚构拼图工具中已经修改的按钮和最初发布的版本之间的所有差别都整理出来，包括具体改了哪些文字以及操作步骤…"
+REPAIR = {"confidence": .98, "title": "虚构拼图工具版本差异整理", "reason": "压缩超长提问，保留具体对象和任务"}
 
 
 class FakeBackend:
@@ -416,6 +418,185 @@ class HookTests(unittest.TestCase):
         with contextlib.redirect_stdout(io.StringIO()) as out:
             ar.process(self.payload(2), self.cfg, self.backend, lambda *x: self.fail(), dry_run=True)
         self.assertEqual(json.loads(out.getvalue())["completed_human_turns"], 2)
+        self.assertNotIn("handled_turns", self.state())
+
+    def test_overlong_accurate_first_title_is_repaired_without_semantic_veto(self):
+        self.backend.value = LONG_TITLE
+        self.assertGreater(len(LONG_TITLE), self.cfg["max_title_chars"])
+        # Reproduce the old failure: "accurate, same topic, keep" cannot veto a
+        # safe replacement after the program establishes the length violation.
+        proposal = REPAIR | {"rename": False, "topic_changed": False, "old_title_inaccurate": False}
+        self.run_hook(1, proposal)
+        self.assertEqual(self.backend.value, REPAIR["title"])
+        self.assertTrue(self.events()[-1]["length_repair"])
+        self.assertNotIn("keep", [e["event"] for e in self.events()])
+
+    def test_repair_schema_only_requests_replacement_and_uses_configured_limit(self):
+        cfg = self.cfg | {"max_title_chars": 18}
+        schema = ar.review_schema(LONG_TITLE, cfg)
+        self.assertEqual(set(schema["required"]), {"confidence", "title", "reason"})
+        self.assertEqual(schema["properties"]["title"]["maxLength"], 18)
+        for flags in ({}, {"initial_naming": True}, {"initial_correction": True}):
+            prompt = ar.review_prompt(LONG_TITLE, [], max_title_chars=18, **flags)
+            self.assertIn("超过 18 字符的硬上限", prompt)
+            self.assertNotIn("rename=false", prompt)
+            self.assertNotIn("原标题准确时必须保持", prompt)
+        self.assertIs(ar.review_schema("正常标题", cfg), ar.SCHEMA)
+
+    def test_length_boundary_and_custom_limit(self):
+        for limit in (18, 40, 60):
+            with self.subTest(limit=limit):
+                cfg = self.cfg | {"max_title_chars": limit}
+                exact = "长" * limit
+                self.assertIsNone(ar.valid_proposal(REPAIR, exact, cfg))
+                self.assertEqual(ar.valid_proposal(REPAIR, exact + "字", cfg), REPAIR["title"])
+                self.assertIsNone(ar.valid_proposal(REPAIR | {"title": "新" * (limit + 1)}, exact + "字", cfg))
+
+    def test_overlong_unicode_and_english_use_character_count(self):
+        for old in ("长" * 41, "A" * 41, "🙂" * 41, "中 A" * 14):
+            with self.subTest(old=old):
+                self.assertEqual(ar.valid_proposal(REPAIR, old, self.cfg), REPAIR["title"])
+
+    def test_length_repair_runs_on_unscheduled_round(self):
+        self.backend.value = LONG_TITLE
+        self.run_hook(3, REPAIR)
+        self.assertEqual(self.backend.value, REPAIR["title"])
+        self.assertEqual(self.state()["last_rename_round"], 3)
+
+    def test_lowered_limit_repairs_previous_auto_title_during_cooldown(self):
+        self.run_hook(1, YES | {"title": "长" * 35})
+        self.cfg["max_title_chars"] = 20
+        self.run_hook(2, REPAIR)
+        self.assertEqual(len(self.backend.writes), 2)
+        self.assertEqual(self.backend.value, REPAIR["title"])
+        self.assertEqual(self.state()["last_rename_round"], 2)
+        self.run_hook(6, YES | {"topic_changed": False})
+        self.assertEqual(len(self.backend.writes), 2)
+
+    def test_failed_repair_never_logs_keep_and_next_human_turn_retries(self):
+        self.backend.value = LONG_TITLE
+        self.run_hook(2, {"rename": False, "title": LONG_TITLE, "confidence": .99, "reason": "含义准确"})
+        self.assertEqual(self.events()[-1]["event"], "repair_deferred")
+        self.assertEqual(self.events()[-1]["cause"], "invalid_title_length_or_whitespace")
+        self.assertNotIn("last_rename_round", self.state())
+        ar.process(self.payload(2), self.cfg, self.backend, lambda *x: self.fail("duplicate repair"))
+        self.run_hook(3, REPAIR)
+        self.assertEqual(self.backend.value, REPAIR["title"])
+        self.assertEqual(len(self.backend.writes), 1)
+
+    def test_repair_model_failure_defers_without_truncation_or_same_turn_retry(self):
+        self.backend.value = LONG_TITLE
+        def review(*args):
+            raise TimeoutError("synthetic timeout")
+        payload = self.payload(2)
+        ar.process(payload, self.cfg, self.backend, review)
+        self.assertEqual(self.backend.value, LONG_TITLE)
+        self.assertEqual(self.events()[-1]["event"], "repair_deferred")
+        self.assertEqual(self.events()[-1]["cause"], "review_error")
+        ar.process(payload, self.cfg, self.backend, lambda *x: self.fail("duplicate review"))
+        self.run_hook(3, REPAIR)
+        self.assertEqual(self.backend.value, REPAIR["title"])
+
+    def test_repair_rejects_unsafe_or_uncertain_replacements(self):
+        for result in (None, [], {}, REPAIR | {"confidence": .5}, REPAIR | {"confidence": True},
+                       REPAIR | {"confidence": float("nan")}, REPAIR | {"confidence": float("inf")},
+                       REPAIR | {"title": "中" * 41}, REPAIR | {"title": "中"},
+                       REPAIR | {"title": "English only"}, REPAIR | {"title": " 中文标题"},
+                       REPAIR | {"title": "中文\n标题"}, REPAIR | {"title": "中文`标题"},
+                       REPAIR | {"title": LONG_TITLE}):
+            with self.subTest(result=result):
+                self.assertIsNone(ar.valid_proposal(result, LONG_TITLE, self.cfg))
+
+    def test_invalid_repair_result_has_explicit_audit(self):
+        self.backend.value = LONG_TITLE
+        ar.process(self.payload(1), self.cfg, self.backend, lambda *args: [])
+        self.assertEqual(self.events()[-1]["event"], "repair_deferred")
+        self.assertEqual(self.events()[-1]["cause"], "invalid_result")
+        self.assertEqual(self.backend.writes, [])
+
+    def test_overlong_locked_and_unadopted_titles_are_protected(self):
+        self.backend.value = LONG_TITLE
+        with ar.locked_state("thread-a") as s:
+            s.update(locked=True, lock_reason="user_request")
+            ar.save(s)
+        ar.process(self.payload(1), self.cfg, self.backend, lambda *args: self.fail("locked"))
+        ar.process(self.payload(1, sid="thread-b"), self.cfg | {"adopt_existing": False},
+                   self.backend, lambda *args: self.fail("not adopted"))
+        self.assertEqual(self.backend.writes, [])
+
+    def test_external_overlong_title_is_not_mistaken_for_repair(self):
+        self.run_hook(1)
+        self.backend.value = LONG_TITLE
+        ar.process(self.payload(3), self.cfg, self.backend, lambda *args: self.fail("manual edit"))
+        self.assertTrue(self.state()["locked"])
+        self.assertEqual(len(self.backend.writes), 1)
+
+    def test_manual_change_while_repairing_prevents_write(self):
+        self.backend.value = LONG_TITLE
+        def review(*args):
+            self.backend.value = "用户刚修改的标题"
+            return REPAIR
+        ar.process(self.payload(1), self.cfg, self.backend, review)
+        self.assertTrue(self.state()["locked"])
+        self.assertEqual(self.backend.writes, [])
+
+    def test_disable_during_repair_prevents_write(self):
+        self.backend.value = LONG_TITLE
+        with patch.object(ar, "settings", return_value=self.cfg | {"enabled": False}):
+            ar.process(self.payload(1), self.cfg, self.backend, lambda *args: REPAIR)
+        self.assertEqual(self.backend.writes, [])
+        self.assertEqual(self.events()[-1]["event"], "disabled_during_review")
+
+    def completed_payload(self, n=1):
+        payload = self.payload(n)
+        with open(payload["transcript_path"], "a", encoding="utf-8") as f:
+            f.write(json.dumps({"type": "event_msg", "payload": {"type": "task_complete", "turn_id": f"t{n}",
+                                                                 "last_agent_message": "回答"}}) + "\n")
+        return payload
+
+    def test_explicit_repair_migrates_old_keep_without_rewriting_turn_count(self):
+        payload = self.completed_payload()
+        self.backend.value = LONG_TITLE
+        with ar.locked_state("thread-a") as s:
+            s.update(handled_turns=["t1"], completed_human_turns=1, observed_title=LONG_TITLE)
+            ar.save(s)
+        meta = {"status": {"type": "notLoaded"}, "path": payload["transcript_path"]}
+        with patch.object(self.backend, "metadata", return_value=meta, create=True):
+            ar.repair_title("thread-a", self.cfg, self.backend, lambda *args: REPAIR)
+            ar.repair_title("thread-a", self.cfg, self.backend, lambda *args: self.fail("already repaired"))
+        self.assertEqual(self.backend.value, REPAIR["title"])
+        self.assertEqual(self.state()["handled_turns"], ["t1"])
+        self.assertEqual(self.state()["completed_human_turns"], 1)
+        self.assertEqual(self.state()["last_rename_round"], 1)
+        self.assertEqual(len(self.backend.writes), 1)
+        self.assertTrue(next(e for e in self.events() if e["event"] == "check")["explicit_repair"])
+
+    def test_explicit_repair_preserves_manual_lock(self):
+        payload = self.completed_payload()
+        self.backend.value = LONG_TITLE
+        with ar.locked_state("thread-a") as s:
+            s.update(handled_turns=["t1"], observed_title=LONG_TITLE, locked=True, lock_reason="user_request")
+            ar.save(s)
+        ar.process(payload, self.cfg, self.backend, lambda *args: self.fail("locked"), repair=True)
+        self.assertEqual(self.backend.writes, [])
+        self.assertTrue(self.state()["locked"])
+
+    def test_explicit_repair_refuses_active_or_incomplete_thread(self):
+        payload = self.payload(1)
+        for status in ("active", "notLoaded", "unknown"):
+            meta = {"status": {"type": status}, "path": payload["transcript_path"]}
+            with patch.object(self.backend, "metadata", return_value=meta, create=True):
+                with self.assertRaises(ValueError):
+                    ar.repair_title("thread-a", self.cfg, self.backend, lambda *args: self.fail("incomplete"))
+        self.assertEqual(self.backend.writes, [])
+
+    def test_explicit_repair_dry_run_does_not_change_state_or_title(self):
+        payload = self.completed_payload()
+        self.backend.value = LONG_TITLE
+        meta = {"status": {"type": "idle"}, "path": payload["transcript_path"]}
+        with patch.object(self.backend, "metadata", return_value=meta, create=True), contextlib.redirect_stdout(io.StringIO()):
+            ar.repair_title("thread-a", self.cfg, self.backend, lambda *args: self.fail("dry run"), dry_run=True)
+        self.assertEqual(self.backend.writes, [])
         self.assertNotIn("handled_turns", self.state())
 
 
